@@ -1,0 +1,225 @@
+---
+title: "Stale Closure Problem"
+slug: "stale-closure"
+subtitle: "Understanding closure pitfalls in React hooks"
+category: "javascript-core"
+icon: "lock"
+description: "Why your useEffect callbacks sometimes use outdated values and how to fix them"
+difficulty: "intermediate"
+tags: ["javascript", "react", "closures"]
+related: ["closures", "react-hooks"]
+resources:
+  - title: "React Docs - useEffect"
+    url: "https://react.dev/reference/react/useEffect"
+  - title: "JavaScript Closures Explained"
+    url: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Closures"
+status: "published"
+---
+
+<DefinitionBlock>
+A stale closure occurs when a closure captures a variable at one point in time but continues to use that captured value even after the variable has been updated. In React, this commonly happens in useEffect, useCallback, and event handlers where closures capture state or props from a specific render cycle.
+</DefinitionBlock>
+
+## What is a Closure?
+
+A closure is a function that has access to variables from its outer (enclosing) scope even after the outer function has returned:
+
+```javascript
+function createCounter() {
+  let count = 0;
+  return {
+    increment: () => ++count,
+    getCount: () => count
+  };
+}
+
+const counter = createCounter();
+console.log(counter.increment()); // 1
+console.log(counter.increment()); // 2
+console.log(counter.getCount());  // 2
+```
+
+The returned functions "close over" the `count` variable, maintaining access to it.
+
+## The Stale Closure Problem
+
+Here's a classic React example:
+
+```jsx
+function Counter() {
+  const [count, setCount] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      console.log(count); // Always logs 0!
+      setCount(count + 1); // Always sets to 1!
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []); // Empty dependency array
+
+  return <div>{count}</div>;
+}
+```
+
+**Why does this happen?**
+
+1. The effect runs once on mount
+2. It captures `count` (which is 0) in its closure
+3. The interval callback always references that captured value (0)
+4. Even as `count` updates, the closure still sees 0
+
+## Solutions
+
+### 1. Include Dependencies
+
+```jsx
+useEffect(() => {
+  const timer = setInterval(() => {
+    console.log(count);
+    setCount(count + 1);
+  }, 1000);
+
+  return () => clearInterval(timer);
+}, [count]); // Now effect re-runs when count changes
+```
+
+But this creates a new interval every second—not ideal!
+
+### 2. Use Functional Updates
+
+```jsx
+useEffect(() => {
+  const timer = setInterval(() => {
+    setCount(c => c + 1); // Uses latest state, no closure needed
+  }, 1000);
+
+  return () => clearInterval(timer);
+}, []); // Empty deps OK with functional updates
+```
+
+### 3. Use a Ref
+
+```jsx
+function Counter() {
+  const [count, setCount] = useState(0);
+  const countRef = useRef(count);
+
+  useEffect(() => {
+    countRef.current = count;
+  });
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      console.log(countRef.current); // Always current!
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, []);
+
+  return <div>{count}</div>;
+}
+```
+
+## Event Handler Stale Closures
+
+Another common issue:
+
+```jsx
+function SearchResults() {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState([]);
+
+  // BAD: Stale closure in event listener
+  useEffect(() => {
+    const handleScroll = () => {
+      if (nearBottom()) {
+        fetchResults(query); // query is stale!
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []); // Missing query dependency
+
+  return ...;
+}
+```
+
+**Fix**: Either include `query` in dependencies or use a ref:
+
+```jsx
+function SearchResults() {
+  const [query, setQuery] = useState('');
+  const queryRef = useRef(query);
+
+  useEffect(() => {
+    queryRef.current = query;
+  });
+
+  useEffect(() => {
+    const handleScroll = () => {
+      if (nearBottom()) {
+        fetchResults(queryRef.current); // Always current
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  return ...;
+}
+```
+
+## The ESLint Plugin
+
+React's ESLint plugin helps catch these issues:
+
+```jsx
+// ESLint warning: React Hook useEffect has a missing dependency: 'count'
+useEffect(() => {
+  console.log(count);
+}, []);
+```
+
+**Don't ignore these warnings!** They're usually right.
+
+## Custom Hooks Pattern
+
+A reusable pattern for avoiding stale closures:
+
+```jsx
+function useLatestRef(value) {
+  const ref = useRef(value);
+  useEffect(() => {
+    ref.current = value;
+  });
+  return ref;
+}
+
+function useInterval(callback, delay) {
+  const callbackRef = useLatestRef(callback);
+
+  useEffect(() => {
+    const tick = () => callbackRef.current();
+    const id = setInterval(tick, delay);
+    return () => clearInterval(id);
+  }, [delay]);
+}
+```
+
+<KeyTakeaway>
+Stale closures happen when callbacks capture outdated values. Fix them by: (1) including all dependencies in useEffect/useCallback arrays, (2) using functional state updates when possible, (3) using refs for values that change frequently but shouldn't trigger re-renders, and (4) paying attention to ESLint warnings about missing dependencies.
+</KeyTakeaway>
+
+## When to Use Each Solution
+
+| Scenario | Solution |
+|----------|----------|
+| Need latest state | Functional update: `setState(s => s + 1)` |
+| Event listeners | useRef + useLatestRef pattern |
+| Stable callbacks | useCallback with correct deps |
+| Subscriptions | Include all deps, or useRef pattern |
+
+Remember: closures capturing state from a specific render is actually React's expected behavior—it ensures consistency within a render. The "stale" problem only occurs when you expect the closure to see updated values across renders.

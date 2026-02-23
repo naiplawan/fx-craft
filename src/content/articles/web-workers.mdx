@@ -1,0 +1,295 @@
+---
+title: "Web Workers"
+slug: "web-workers"
+subtitle: "Offload heavy computation from the main thread"
+category: "browser-apis"
+icon: "cpu"
+description: "Use Web Workers to run JavaScript in background threads without blocking the UI"
+difficulty: "intermediate"
+tags: ["performance", "multithreading", "browser"]
+related: ["service-workers", "webassembly"]
+resources:
+  - title: "MDN - Web Workers API"
+    url: "https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API"
+  - title: "Google Developers - Web Workers"
+    url: "https://developers.google.com/web/updates/2018/10/wasm-threads"
+status: "published"
+---
+
+<DefinitionBlock>
+Web Workers allow you to run JavaScript in background threads separate from the main execution thread. This enables CPU-intensive tasks—like complex calculations, image processing, or data parsing—to run without blocking the UI or causing frame drops.
+</DefinitionBlock>
+
+## Why Web Workers?
+
+JavaScript is single-threaded. When you run heavy computation:
+
+```javascript
+// Main thread - UI freezes during this loop
+function heavyCalculation() {
+  let result = 0;
+  for (let i = 0; i < 1000000000; i++) {
+    result += Math.sqrt(i);
+  }
+  return result;
+}
+
+// User can't click, scroll, or interact while this runs
+```
+
+Web Workers solve this by running code on separate threads.
+
+## Creating a Web Worker
+
+### Basic Setup
+
+```javascript
+// worker.js - Runs in separate thread
+self.onmessage = function(e) {
+  const { data } = e;
+  const result = heavyCalculation(data);
+  self.postMessage(result);
+};
+
+function heavyCalculation(input) {
+  // CPU-intensive work here
+  let result = 0;
+  for (let i = 0; i < input; i++) {
+    result += Math.sqrt(i);
+  }
+  return result;
+}
+```
+
+```javascript
+// main.js - Main thread
+const worker = new Worker('worker.js');
+
+worker.onmessage = function(e) {
+  console.log('Result:', e.data);
+  // UI remains responsive throughout!
+};
+
+// Start the calculation
+worker.postMessage(1000000000);
+```
+
+### Inline Workers
+
+For bundler compatibility, create workers inline:
+
+```javascript
+const workerCode = `
+  self.onmessage = function(e) {
+    const result = e.data * 2;
+    self.postMessage(result);
+  };
+`;
+
+const blob = new Blob([workerCode], { type: 'application/javascript' });
+const worker = new Worker(URL.createObjectURL(blob));
+```
+
+## Communication Patterns
+
+### Request-Response
+
+```javascript
+// Worker
+let requestId = 0;
+const pending = new Map();
+
+self.onmessage = function(e) {
+  const { id, payload } = e.data;
+  const result = processData(payload);
+  self.postMessage({ id, result });
+};
+
+// Main thread
+function callWorker(data) {
+  return new Promise((resolve) => {
+    const id = ++requestId;
+    pending.set(id, resolve);
+    worker.postMessage({ id, payload: data });
+  });
+}
+
+worker.onmessage = function(e) {
+  const { id, result } = e.data;
+  const resolve = pending.get(id);
+  if (resolve) {
+    resolve(result);
+    pending.delete(id);
+  }
+};
+```
+
+### SharedArrayBuffer
+
+For high-performance shared memory (requires `Cross-Origin-Opener-Policy: same-origin` and `Cross-Origin-Embedder-Policy: require-corp` headers):
+
+```javascript
+// Create shared buffer
+const sharedBuffer = new SharedArrayBuffer(1024);
+const sharedArray = new Int32Array(sharedBuffer);
+
+// Send to worker (no copy - shares memory)
+worker.postMessage({ buffer: sharedBuffer });
+
+// Both main thread and worker can access sharedArray
+// Use Atomics for thread-safe operations
+Atomics.store(sharedArray, 0, 42);
+Atomics.add(sharedArray, 1, 1);
+```
+
+## Worker Limitations
+
+Web Workers don't have access to:
+- **DOM** - Can't manipulate the page directly
+- **window object** - Only self/WorkerGlobalScope
+- **parent page** - Can only communicate via postMessage
+- **Some APIs** - alert(), confirm(), localStorage, sessionStorage
+
+Available APIs include:
+- fetch()
+- WebSockets
+- IndexedDB
+- setTimeout/setInterval
+- XMLHttpRequest
+
+## Use Cases
+
+### 1. Image Processing
+
+```javascript
+// worker.js
+self.onmessage = async function(e) {
+  const { imageData, filters } = e.data;
+  
+  // Apply filters pixel by pixel
+  const processed = applyFilters(imageData, filters);
+  
+  self.postMessage(processed, [processed.data.buffer]);
+};
+```
+
+### 2. Data Parsing
+
+```javascript
+// Parse massive CSV without freezing UI
+worker.postMessage({ type: 'parse', csv: hugeCsvString });
+
+worker.onmessage = function(e) {
+  const { rows, errors } = e.data;
+  updateTable(rows);
+  showErrors(errors);
+};
+```
+
+### 3. Cryptographic Operations
+
+```javascript
+// Hash large files
+async function hashFile(file) {
+  const worker = new Worker('hash-worker.js');
+  const arrayBuffer = await file.arrayBuffer();
+  
+  return new Promise((resolve) => {
+    worker.onmessage = (e) => resolve(e.data);
+    worker.postMessage(arrayBuffer, [arrayBuffer]);
+  });
+}
+```
+
+## Performance Considerations
+
+### Worker Pool
+
+Creating workers has overhead. Use a pool for frequent tasks:
+
+```javascript
+class WorkerPool {
+  constructor(workerScript, poolSize = 4) {
+    this.workers = Array(poolSize).fill(null).map(() => ({
+      worker: new Worker(workerScript),
+      busy: false,
+      queue: []
+    }));
+  }
+
+  async execute(data) {
+    const available = this.workers.find(w => !w.busy);
+    
+    if (available) {
+      return this.runWorker(available, data);
+    }
+    
+    // Wait for next available worker
+    return new Promise((resolve) => {
+      this.queue.push({ data, resolve });
+    });
+  }
+
+  runWorker(workerObj, data) {
+    workerObj.busy = true;
+    
+    return new Promise((resolve) => {
+      workerObj.worker.onmessage = (e) => {
+        workerObj.busy = false;
+        resolve(e.data);
+        
+        // Process queue
+        if (this.queue.length > 0) {
+          const next = this.queue.shift();
+          this.execute(next.data).then(next.resolve);
+        }
+      };
+      
+      workerObj.worker.postMessage(data);
+    });
+  }
+}
+```
+
+### Transferable Objects
+
+For large data, transfer ownership (zero-copy):
+
+```javascript
+const hugeArray = new Uint8Array(100000000);
+
+// Transfer ownership to worker (array becomes unusable in main thread)
+worker.postMessage(hugeArray, [hugeArray.buffer]);
+```
+
+## Terminating Workers
+
+Always clean up workers to free memory:
+
+```javascript
+// Method 1: From main thread
+worker.terminate();
+
+// Method 2: Worker self-termination
+self.close();
+```
+
+<KeyTakeaway>
+Use Web Workers for CPU-intensive tasks that would block the main thread. Keep workers for long-running operations, use transferable objects for large data, implement worker pools for frequent tasks, and always terminate workers when done. Remember: workers can't access the DOM, so all UI updates must happen via postMessage.
+</KeyTakeaway>
+
+## Modern Alternatives
+
+- **WebAssembly** - Near-native performance for compute-heavy tasks
+- **Service Workers** - For caching and offline functionality (different use case)
+- **Comlink** - Library that makes workers feel like async functions
+
+```javascript
+// With Comlink
+import * as Comlink from 'comlink';
+
+const worker = new Worker('./worker.js');
+const api = Comlink.wrap(worker);
+
+const result = await api.heavyCalculation(1000000); // Like a regular async function!
+```

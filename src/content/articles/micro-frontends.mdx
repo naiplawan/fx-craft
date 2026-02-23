@@ -1,0 +1,282 @@
+---
+title: "Micro-frontends"
+slug: "micro-frontends"
+subtitle: "Architecting frontend applications at scale"
+category: "architecture"
+icon: "layout-grid"
+description: "Breaking monolithic frontends into independently deployable pieces"
+difficulty: "advanced"
+tags: ["architecture", "microservices", "scaling"]
+related: ["module-federation", "design-systems"]
+resources:
+  - title: "Micro-frontends.org"
+    url: "https://micro-frontends.org/"
+  - title: "Martin Fowler - Micro-frontends"
+    url: "https://martinfowler.com/articles/micro-frontends.html"
+status: "published"
+---
+
+<DefinitionBlock>
+Micro-frontends extend the microservices concept to frontend development. Instead of building a monolithic SPA, you break the application into semi-independent features owned by different teams. Each micro-frontend can be developed, tested, deployed, and scaled independently, using potentially different technology stacks.
+</DefinitionBlock>
+
+## The Problem with Monoliths
+
+Traditional frontend architecture:
+
+```
+┌─────────────────────────────────────┐
+│         Monolithic SPA              │
+│                                     │
+│  ┌─────────┐  ┌─────────┐          │
+│  │  Team A │  │  Team B │          │
+│  │ Feature │  │ Feature │          │
+│  └─────────┘  └─────────┘          │
+│                                     │
+│  ┌─────────┐  ┌─────────┐          │
+│  │  Team C │  │  Team D │          │
+│  │ Feature │  │ Feature │          │
+│  └─────────┘  └─────────┘          │
+│                                     │
+│  Single codebase, shared deploy    │
+└─────────────────────────────────────┘
+```
+
+Problems:
+- **Coupled deployments** - One team's bug blocks everyone
+- **Codebase complexity** - Hard to navigate large codebases
+- **Technology lock-in** - Can't upgrade libraries incrementally
+- **Team autonomy** - Teams block each other
+
+## Micro-frontend Architecture
+
+```
+┌─────────────────────────────────────┐
+│         Container App               │
+│     (Shell/Router/Navigation)       │
+└──────┬──────┬──────┬──────┬─────────┘
+       │      │      │      │
+       ▼      ▼      ▼      ▼
+  ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
+  │Team A  │ │Team B  │ │Team C  │ │Team D  │
+  │Browse  │ │Product │ │Cart    │ │Checkout│
+  │(React) │ │(Vue)   │ │(React) │ │(Svelte)│
+  └────────┘ └────────┘ └────────┘ └────────┘
+  Independent deploys, different stacks
+```
+
+## Implementation Approaches
+
+### 1. Build-Time Integration (NPM)
+
+Package micro-frontends as NPM packages:
+
+```javascript
+// container-app/package.json
+{
+  "dependencies": {
+    "@company/browse": "^1.2.0",
+    "@company/product": "^2.1.0",
+    "@company/checkout": "^1.0.5"
+  }
+}
+```
+
+```jsx
+// container-app/src/App.jsx
+import Browse from '@company/browse';
+import Product from '@company/product';
+
+function App() {
+  return (
+    <Router>
+      <Route path="/browse" component={Browse} />
+      <Route path="/product" component={Product} />
+    </Router>
+  );
+}
+```
+
+**Pros**: Simple, good performance
+**Cons**: Requires redeploy for updates, coupling at build time
+
+### 2. Run-Time Integration (Module Federation)
+
+Load micro-frontends at runtime:
+
+```javascript
+// container-app/webpack.config.js
+const { ModuleFederationPlugin } = require('webpack').container;
+
+module.exports = {
+  plugins: [
+    new ModuleFederationPlugin({
+      name: 'container',
+      remotes: {
+        browse: 'browse@https://browse.example.com/remoteEntry.js',
+        product: 'product@https://product.example.com/remoteEntry.js',
+      },
+    }),
+  ],
+};
+```
+
+```jsx
+// Runtime import
+const Browse = React.lazy(() => import('browse/App'));
+
+function App() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <Browse />
+    </Suspense>
+  );
+}
+```
+
+**Pros**: Independent deploys, runtime updates
+**Cons**: Complex tooling, versioning challenges
+
+### 3. iframe-Based
+
+Simplest but most isolated:
+
+```jsx
+function MicroFrontend({ src }) {
+  return <iframe src={src} style={{ width: '100%', border: 'none' }} />;
+}
+```
+
+**Pros**: Complete isolation, any tech stack
+**Cons**: Performance, SEO, complex cross-frame communication
+
+### 4. Web Components
+
+Standard-based approach:
+
+```javascript
+// browse-app.js
+class BrowseApp extends HTMLElement {
+  connectedCallback() {
+    this.innerHTML = '<div>Browse Content</div>';
+    // Initialize React/Vue/Angular here
+  }
+}
+customElements.define('browse-app', BrowseApp);
+```
+
+```html
+<!-- Container HTML -->
+<browse-app></browse-app>
+<product-app product-id="123"></product-app>
+```
+
+## Integration Patterns
+
+### Routing
+
+```javascript
+// Container handles routing, loads appropriate micro-frontend
+function Container() {
+  return (
+    <Router>
+      <Route path="/browse/*" component={BrowseLoader} />
+      <Route path="/product/:id" component={ProductLoader} />
+      <Route path="/checkout/*" component={CheckoutLoader} />
+    </Router>
+  );
+}
+
+function BrowseLoader() {
+  useEffect(() => {
+    // Load browse micro-frontend bundle
+    loadRemote('browse');
+  }, []);
+  
+  return <div id="browse-root" />;
+}
+```
+
+### Communication
+
+```javascript
+// Event-based communication (recommended)
+const eventBus = new EventTarget();
+
+// Team A publishes
+eventBus.dispatchEvent(new CustomEvent('cart:updated', {
+  detail: { items: [...] }
+}));
+
+// Team B subscribes
+eventBus.addEventListener('cart:updated', (e) => {
+  updateCartCount(e.detail.items.length);
+});
+```
+
+### Shared Dependencies
+
+```javascript
+// webpack.config.js
+new ModuleFederationPlugin({
+  shared: {
+    react: { singleton: true },
+    'react-dom': { singleton: true },
+    '@company/design-system': { singleton: true },
+  },
+});
+```
+
+## Challenges
+
+### 1. Performance
+
+- **Bundle size**: Multiple frameworks = more JS
+- **Solution**: Shared dependencies, lazy loading
+
+### 2. Consistency
+
+- **UI inconsistencies** between teams
+- **Solution**: Shared design system, strict guidelines
+
+### 3. Testing
+
+- **Integration testing** across boundaries
+- **Solution**: Contract testing, E2E tests at container level
+
+### 4. State Management
+
+- **Sharing state** between micro-frontends
+- **Solution**: URL as source of truth, events for communication
+
+### 5. Authentication
+
+- **Single sign-on** across boundaries
+- **Solution**: Shared auth library, token in cookie/localStorage
+
+## When to Use Micro-frontends
+
+✅ **Good fit**:
+- Large applications (100+ developers)
+- Multiple autonomous teams
+- Need to upgrade technology incrementally
+- Different release cadences
+
+❌ **Not recommended**:
+- Small teams (< 30 developers)
+- Tight coupling between features
+- Performance-critical applications
+- Simple CRUD apps
+
+<KeyTakeaway>
+Micro-frontends trade simplicity for autonomy. They're not "free"—they add complexity in integration, performance, and consistency. Only adopt when your organization is large enough to justify the overhead. Start with a monolith and extract micro-frontends when clear boundaries emerge.
+</KeyTakeaway>
+
+## Best Practices
+
+1. **Minimize shared state** - Use events, not shared stores
+2. **Version your APIs** - Micro-frontends are services
+3. **Shared design system** - Consistency across boundaries
+4. **Independent deploys** - Each team owns their pipeline
+5. **Error boundaries** - One micro-frontend shouldn't crash others
+6. **Lazy loading** - Load micro-frontends on demand

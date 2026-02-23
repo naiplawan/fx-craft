@@ -1,0 +1,171 @@
+---
+title: "Critical Rendering Path"
+slug: "critical-rendering-path"
+subtitle: "How browsers turn HTML into pixels"
+category: "performance"
+icon: "zap"
+description: "Understanding the sequence of steps browsers take to render web pages and how to optimize them"
+difficulty: "intermediate"
+tags: ["performance", "browser", "optimization"]
+related: ["layout-thrashing"]
+resources:
+  - title: "Google Developers - Critical Rendering Path"
+    url: "https://developers.google.com/web/fundamentals/performance/critical-rendering-path"
+  - title: "MDN - How Browsers Work"
+    url: "https://developer.mozilla.org/en-US/docs/Web/Performance/How_browsers_work"
+status: "published"
+---
+
+<DefinitionBlock>
+The Critical Rendering Path (CRP) is the sequence of steps browsers take to convert HTML, CSS, and JavaScript into rendered pixels on the screen. Optimizing the CRP improves initial page load times and First Contentful Paint (FCP). The CRP consists of: DOM construction, CSSOM construction, JavaScript execution, rendering tree creation, layout, and paint.
+</DefinitionBlock>
+
+## The Six Steps of CRP
+
+### 1. Constructing the DOM
+
+When the browser receives HTML bytes, it:
+- **Tokenizes** the HTML into tokens
+- **Parses** tokens into nodes
+- **Builds** the DOM tree
+
+```html
+<!-- HTML -->
+<html>
+  <head>...</head>
+  <body>
+    <div>Hello</div>
+  </body>
+</html>
+```
+
+This becomes a tree structure the browser can work with.
+
+### 2. Constructing the CSSOM
+
+CSS is render-blocking because the browser can't render anything until it knows how to style it:
+
+```css
+/* CSS */
+body { font-size: 16px; }
+div { color: blue; }
+```
+
+The browser converts CSS into the CSSOM (CSS Object Model), which is also a tree structure that matches the DOM.
+
+### 3. Executing JavaScript
+
+JavaScript can:
+- Modify the DOM
+- Modify the CSSOM
+- Block parsing if not async/deferred
+
+```javascript
+// JavaScript blocks HTML parsing unless async/deferred
+document.querySelector('div').textContent = 'Modified';
+```
+
+### 4. Creating the Render Tree
+
+The render tree combines DOM and CSSOM, containing only **visible** elements:
+
+```css
+/* Elements with display: none are excluded */
+.hidden { display: none; }  /* Not in render tree */
+.visible { opacity: 0; }    /* In render tree (still takes space) */
+```
+
+### 5. Layout (Reflow)
+
+The browser calculates the exact position and size of each element:
+
+- **Reflow** is expensive - it recalculates geometry
+- Reading layout properties (offsetHeight, getBoundingClientRect) forces reflow
+- Batch your reads and writes to minimize reflows
+
+### 6. Paint
+
+The browser fills in pixels, converting the render tree into actual pixels on screen:
+
+- Painting can happen on multiple layers (GPU acceleration)
+- Compositing combines layers efficiently
+
+## Render-Blocking Resources
+
+Resources that must be loaded before rendering can begin:
+
+### CSS (Render-blocking)
+
+```html
+<!-- BAD: Blocks rendering -->
+<link rel="stylesheet" href="styles.css">
+
+<!-- GOOD: Load non-critical CSS asynchronously -->
+<link rel="preload" href="critical.css" as="style">
+<link rel="stylesheet" href="non-critical.css" media="print" onload="this.media='all'">
+```
+
+### JavaScript (Parser-blocking)
+
+```html
+<!-- BAD: Blocks HTML parsing -->
+<script src="app.js"></script>
+
+<!-- GOOD: Async loading -->
+<script src="app.js" async></script>
+<script src="app.js" defer></script>
+```
+
+## Optimizing the CRP
+
+### 1. Minimize Critical Resources
+- Inline critical CSS
+- Defer non-critical JavaScript
+- Use resource hints (preload, prefetch)
+
+### 2. Minimize Critical Bytes
+- Minify CSS, JS, and HTML
+- Enable compression (gzip, brotli)
+- Remove unused code
+
+### 3. Minimize Critical Path Length
+- Reduce number of critical requests
+- Use HTTP/2 for parallel loading
+- Implement effective caching
+
+## Resource Loading Strategies
+
+```html
+<!-- Preload: High priority, fetch early -->
+<link rel="preload" href="critical-font.woff2" as="font" type="font/woff2" crossorigin>
+
+<!-- Preconnect: Early connection setup -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+
+<!-- Prefetch: Low priority, fetch for next navigation -->
+<link rel="prefetch" href="next-page.html">
+```
+
+## Measuring CRP
+
+Use Chrome DevTools:
+- **Network tab**: See resource loading waterfall
+- **Performance tab**: Record and analyze CRP
+- **Lighthouse**: Get CRP optimization scores
+
+Key metrics:
+- **First Contentful Paint (FCP)**: When first content appears
+- **Largest Contentful Paint (LCP)**: When largest content is visible
+- **Time to Interactive (TTI)**: When page becomes interactive
+
+<KeyTakeaway>
+Optimize the Critical Rendering Path by: (1) eliminating render-blocking resources, (2) inlining critical CSS, (3) deferring non-critical JavaScript, (4) compressing resources, and (5) using resource hints effectively. Every millisecond saved in CRP improves user experience.
+</KeyTakeaway>
+
+## Common Mistakes
+
+1. **Large CSS bundles** - Load only what you need
+2. **Synchronous scripts in head** - Move to bottom or use async/defer
+3. **Unoptimized images** - Use modern formats and proper sizing
+4. **Render-blocking web fonts** - Use font-display: swap
+5. **Deeply nested DOM** - Flatter DOM renders faster

@@ -1,0 +1,303 @@
+---
+title: "Accessibility Tree"
+slug: "accessibility-tree"
+subtitle: "How assistive technologies understand your UI"
+category: "accessibility"
+icon: "eye"
+description: "Understanding the browser's accessibility tree and how screen readers navigate your content"
+difficulty: "intermediate"
+tags: ["a11y", "screen-readers", "dom"]
+related: ["aria", "focus-management", "semantic-html"]
+resources:
+  - title: "Web.dev - The Accessibility Tree"
+    url: "https://web.dev/the-accessibility-tree/"
+  - title: "Chrome DevTools - Accessibility"
+    url: "https://developer.chrome.com/docs/devtools/accessibility/reference/"
+status: "published"
+---
+
+<DefinitionBlock>
+The Accessibility Tree is a non-visually translation of the DOM that assistive technologies (screen readers, switch controls) use to navigate and present web content to users with disabilities. It includes semantic information like headings, landmarks, interactive elements, and their relationships, while filtering out purely visual elements like decorative images and styling containers.
+</DefinitionBlock>
+
+## DOM vs Accessibility Tree
+
+### DOM Tree (Visual)
+
+```html
+<div class="card">
+  <div class="card-header">
+    <div class="title">Products</div>
+    <button class="btn" onclick="add()">+ Add</button>
+  </div>
+  <ul class="list">
+    <li class="item">
+      <img src="item.jpg" class="thumb" alt="">
+      <span class="name">Widget</span>
+    </li>
+  </ul>
+</div>
+```
+
+### Accessibility Tree (Semantic)
+
+```
++-- Section ["Products"]
+    +-- Heading 1 ["Products"]
+    +-- Button ["Add"]
+    +-- List
+        +-- ListItem
+            +-- StaticText ["Widget"]
+```
+
+**Differences**:
+- `<div>` containers often removed (if purely presentational)
+- Decorative `alt=""` images excluded
+- Semantic roles added (button, list, heading)
+- Names computed from text content or ARIA
+
+## How Browsers Build It
+
+The browser creates the accessibility tree through:
+
+1. **DOM traversal** - Walking the DOM tree
+2. **Role mapping** - Converting elements to accessibility roles
+3. **Name calculation** - Computing accessible names
+4. **State computation** - Determining states (checked, disabled, etc.)
+5. **Tree pruning** - Removing presentational elements
+
+### Role Mapping
+
+```html
+<!-- HTML Element -->
+<button>Submit</button>
+
+<!-- Accessibility Tree -->
+Role: button
+Name: "Submit"
+State: enabled
+```
+
+```html
+<!-- HTML Element -->
+<div onclick="submit()" role="button" tabindex="0">Submit</div>
+
+<!-- Accessibility Tree -->
+Role: button
+Name: "Submit"
+State: enabled
+Focusable: true
+```
+
+## Inspecting the Tree
+
+### Chrome DevTools
+
+1. Open DevTools → Elements panel
+2. Click "Accessibility" tab (may need to enable in settings)
+3. See the computed accessibility tree
+
+### Firefox Accessibility Inspector
+
+1. DevTools → Accessibility tab
+2. Check "Show Tabbing Order" to see focusable elements
+
+### Screen Reader Testing
+
+```bash
+# macOS VoiceOver
+Cmd + F5 (enable)
+Ctrl + Option + U (rotor - jump to headings, links, etc.)
+
+# Windows NVDA
+Insert + F7 (elements list)
+Insert + Space (browse/focus mode toggle)
+```
+
+## Semantic HTML Matters
+
+### ❌ Bad: Div soup
+
+```html
+<div class="nav">
+  <div class="nav-item" onclick="goHome()">Home</div>
+  <div class="nav-item" onclick="goAbout()">About</div>
+</div>
+
+<!-- Accessibility Tree: Generic text nodes -->
+```
+
+### ✅ Good: Semantic HTML
+
+```html
+<nav aria-label="Main">
+  <ul>
+    <li><a href="/">Home</a></li>
+    <li><a href="/about">About</a></li>
+  </ul>
+</nav>
+
+<!-- Accessibility Tree:
++-- Navigation ["Main"]
+    +-- List
+        +-- ListItem
+            +-- Link ["Home"]
+        +-- ListItem
+            +-- Link ["About"]
+-->
+```
+
+## ARIA Roles
+
+When semantic HTML isn't enough, use ARIA:
+
+```html
+<!-- Custom checkbox -->
+<div role="checkbox"
+     aria-checked="false"
+     aria-labelledby="chk-label"
+     tabindex="0">
+  <div class="checkbox-visual"></div>
+  <span id="chk-label">Enable notifications</span>
+</div>
+
+<!-- Accessibility Tree:
+Role: checkbox
+Name: "Enable notifications"
+State: checked=false
+Focusable: true
+-->
+```
+
+Common roles:
+- `banner` (header)
+- `navigation` (nav)
+- `main` (main content)
+- `complementary` (aside)
+- `contentinfo` (footer)
+- `article`, `region`, `form`, `search`
+
+## Name Calculation
+
+Screen readers announce elements by their **accessible name**:
+
+```html
+<!-- Name from text content -->
+<button>Save Changes</button>
+<!-- Name: "Save Changes" -->
+
+<!-- Name from aria-label -->
+<button aria-label="Close dialog">&times;</button>
+<!-- Name: "Close dialog" -->
+
+<!-- Name from aria-labelledby -->
+<input type="checkbox" aria-labelledby="agree-label">
+<span id="agree-label">I agree to the terms</span>
+<!-- Name: "I agree to the terms" -->
+
+<!-- Name from aria-describedby (description, not name) -->
+<input aria-describedby="password-help">
+<span id="password-help">Must be 8+ characters</span>
+```
+
+## Common Accessibility Tree Issues
+
+### 1. Missing Names
+
+```html
+<!-- BAD: Icon-only button with no name -->
+<button onclick="delete()">
+  <svg>...</svg>  <!-- Trash icon -->
+</button>
+<!-- Screen reader: "button" (no context) -->
+
+<!-- GOOD: Add accessible name -->
+<button onclick="delete()" aria-label="Delete item">
+  <svg aria-hidden="true">...</svg>
+</button>
+<!-- Screen reader: "Delete item, button" -->
+```
+
+### 2. Broken Heading Hierarchy
+
+```html
+<!-- BAD: Skip levels -->
+<h1>Page Title</h1>
+<h4>Section</h4>  <!-- Jumped from h1 to h4 -->
+
+<!-- GOOD: Sequential -->
+<h1>Page Title</h1>
+<h2>Section</h2>
+<h3>Subsection</h3>
+```
+
+### 3. Duplicate Landmarks
+
+```html
+<!-- BAD: Multiple navs without labels -->
+<nav>...main nav...</nav>
+<nav>...footer nav...</nav>
+
+<!-- GOOD: Label each -->
+<nav aria-label="Main">...main nav...</nav>
+<nav aria-label="Footer">...footer nav...</nav>
+```
+
+### 4. Focus Management
+
+```javascript
+// When opening modal, manage focus
+function openModal() {
+  modal.show();
+  modal.querySelector('button').focus();  // Focus first element
+}
+
+// When closing modal, restore focus
+function closeModal() {
+  modal.hide();
+  openButton.focus();  // Return focus to trigger
+}
+```
+
+## Testing with Screen Readers
+
+### Navigation Shortcuts
+
+| Screen Reader | Shortcut | Action |
+|--------------|----------|--------|
+| VoiceOver | VO + U | Open rotor |
+| NVDA | Insert + F7 | Elements list |
+| JAWS | Insert + F7 | Links list |
+
+### What to Test
+
+1. **Landmarks** - Can you jump to main, navigation, complementary?
+2. **Headings** - Is the hierarchy logical?
+3. **Forms** - Are labels associated with inputs?
+4. **Interactive elements** - Are buttons and links descriptive?
+5. **Dynamic content** - Are updates announced?
+
+<KeyTakeaway>
+The accessibility tree is how assistive technologies experience your site. Build it intentionally using semantic HTML, proper ARIA when needed, and meaningful names. Test with screen readers and DevTools to ensure all users can navigate and understand your content. Remember: every element in the accessibility tree should have a purpose and a name.
+</KeyTakeaway>
+
+## Quick Reference
+
+```html
+<!-- Landmarks -->
+<header> or <div role="banner">
+<nav>
+<main>
+<aside> or <div role="complementary">
+<footer> or <div role="contentinfo">
+
+<!-- Content -->
+<article>
+<section>
+<h1>-<h6>
+
+<!-- Interactive -->
+<button> (not <div role="button">)
+<a href="..."> (not <span onclick>)
+<label for="..."> + <input>
+```

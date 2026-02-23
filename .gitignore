@@ -38,4 +38,7 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
-next-env.d.ts
+# next-env.d.ts - This should NOT be ignored, Next.js needs it
+
+# build output
+/dist

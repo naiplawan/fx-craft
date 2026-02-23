@@ -1,0 +1,101 @@
+---
+title: "Hydration"
+slug: "hydration"
+subtitle: "How static HTML becomes interactive in the browser"
+category: "rendering"
+icon: "droplets"
+description: "Understanding the process of attaching event listeners and state to server-rendered HTML"
+difficulty: "intermediate"
+tags: ["ssr", "react", "performance"]
+related: ["partial-hydration", "islands-architecture", "streaming-ssr"]
+resources:
+  - title: "React Docs - Hydration"
+    url: "https://react.dev/reference/react-dom/client/hydrateRoot"
+  - title: "Google Developers - Hydration"
+    url: "https://developers.google.com/web/updates/2019/02/rendering-on-the-web"
+status: "published"
+---
+
+<DefinitionBlock>
+Hydration is the process by which a JavaScript framework takes over a static HTML page that was rendered on the server and attaches event listeners, state, and interactivity to make it fully functional. It bridges the gap between server-side rendering (SSR) and client-side interactivity.
+</DefinitionBlock>
+
+## The Problem Hydration Solves
+
+When you use server-side rendering, your application sends fully formed HTML to the browser. This gives users something to see immediately—great for perceived performance and SEO. However, that HTML is just static markup. Without JavaScript, buttons don't work, forms don't submit, and dynamic content doesn't update.
+
+Hydration is the solution: it "brings the page to life" by:
+
+1. **Reconciling the DOM** - The framework compares the server-rendered HTML with what it would render on the client
+2. **Attaching event listeners** - Click handlers, form submissions, and other interactions are wired up
+3. **Initializing state** - Client-side state management begins
+4. **Setting up effects** - Side effects and subscriptions start running
+
+## How Hydration Works in React
+
+React's hydration process is sophisticated. When you call `hydrateRoot()`, React doesn't just wipe the DOM and re-render. Instead:
+
+```jsx
+import { hydrateRoot } from 'react-dom/client';
+import App from './App';
+
+const container = document.getElementById('root');
+hydrateRoot(container, <App />);
+```
+
+React performs a **non-destructive hydration**. It walks through the DOM tree and:
+
+- Verifies that the server HTML matches the client render
+- Attaches event listeners to existing DOM nodes
+- Batches updates to avoid layout thrashing
+
+If React detects a mismatch between server and client HTML, it will:
+- Log a warning (treated as an error in React 18+) in development
+- Attempt to recover by client-rendering up to the nearest `<Suspense>` boundary in production — the entire subtree within that boundary is re-rendered from scratch
+
+## The Cost of Hydration
+
+Hydration isn't free. It requires:
+
+- **Downloading JavaScript** - The client bundle must be fetched and parsed
+- **Executing JavaScript** - The framework must run to hydrate the page
+- **Main thread blocking** - Hydration happens on the main thread, potentially delaying interactivity
+
+For large applications, hydration can take hundreds of milliseconds or even seconds, creating a period where the page **looks** interactive but isn't yet.
+
+<KeyTakeaway>
+Hydration is necessary for SSR applications, but it comes with a performance cost. The page isn't truly interactive until hydration completes. Techniques like partial hydration, islands architecture, and streaming can help reduce this cost.
+</KeyTakeaway>
+
+## Hydration Strategies
+
+### Full Hydration
+The traditional approach—every component is hydrated. Simple but potentially slow.
+
+### Partial Hydration
+Only hydrate components that need interactivity. Static parts of the page remain untouched.
+
+### Progressive Hydration
+Hydrate components based on priority. Above-the-fold content hydrates first, followed by less critical components.
+
+### Islands Architecture
+The page is composed of "islands" of interactivity surrounded by static content. Each island hydrates independently.
+
+## Common Hydration Issues
+
+1. **Hydration Mismatches** - Server and client render different HTML
+2. **Browser-only APIs** - Using `window` or `document` during render
+3. **Timing Issues** - Server and client have different execution environments
+4. **Third-party Scripts** - External scripts modifying the DOM before hydration
+
+## Best Practices
+
+- Avoid side effects during the initial render
+- Use `useEffect` for browser-only APIs
+- Keep server and client renders identical
+- Consider using frameworks with built-in partial hydration support
+- Profile hydration time and optimize critical paths
+
+## The Future: Resumability
+
+Newer approaches like **resumability** (used in Qwik) aim to eliminate hydration entirely. Instead of re-executing the application on the client, the server serializes the application's state and event listeners, allowing the client to "resume" where the server left off without re-running the entire app.

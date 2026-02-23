@@ -1,26 +1,139 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  
+  /* Teal Brand Colors */
+  --color-teal-dark: #09637E;
+  --color-teal: #088395;
+  --color-teal-light: #7AB2B2;
+  --color-teal-pale: #EBF4F6;
+  
+  /* Semantic Colors */
+  --color-primary: #088395;
+  --color-primary-dark: #09637E;
+  --color-primary-light: #7AB2B2;
+  --color-primary-pale: #EBF4F6;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+:root {
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --card: #ffffff;
+  --card-foreground: #0a0a0a;
+  --border: #e5e7eb;
+  --input: #e5e7eb;
+  --ring: #088395;
+}
+
+.dark {
+  --background: #0a0a0a;
+  --foreground: #fafafa;
+  --card: #171717;
+  --card-foreground: #fafafa;
+  --border: #262626;
+  --input: #262626;
+  --ring: #7AB2B2;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #4b5563;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #6b7280;
+}
+
+/* Selection */
+::selection {
+  background: rgba(8, 131, 149, 0.2);
+}
+
+.dark ::selection {
+  background: rgba(122, 178, 178, 0.3);
+}
+
+/* Prose styles for MDX */
+.prose {
+  max-width: none;
+}
+
+.prose a {
+  color: #088395;
+  text-decoration: none;
+}
+
+.prose a:hover {
+  color: #09637E;
+  text-decoration: underline;
+}
+
+.dark .prose a {
+  color: #7AB2B2;
+}
+
+.dark .prose a:hover {
+  color: #88c4c4;
+}
+
+.prose code {
+  background: #EBF4F6;
+  color: #09637E;
+  padding: 0.2em 0.4em;
+  border-radius: 0.25rem;
+  font-size: 0.875em;
+}
+
+.dark .prose code {
+  background: #1a2f33;
+  color: #7AB2B2;
+}
+
+.prose pre {
+  background: #1a1a1a;
+  color: #fafafa;
+}
+
+.prose pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+}
+
+.prose blockquote {
+  border-left-color: #088395;
+}
+
+.dark .prose blockquote {
+  border-left-color: #7AB2B2;
 }

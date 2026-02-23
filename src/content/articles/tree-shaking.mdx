@@ -1,0 +1,334 @@
+---
+title: "Tree Shaking"
+slug: "tree-shaking"
+subtitle: "Eliminating dead code for smaller bundles"
+category: "bundling"
+icon: "scissors"
+description: "How modern bundlers remove unused code and optimize your JavaScript bundles"
+difficulty: "intermediate"
+tags: ["bundling", "optimization", "webpack", "rollup"]
+related: ["code-splitting", "module-federation"]
+resources:
+  - title: "Webpack - Tree Shaking"
+    url: "https://webpack.js.org/guides/tree-shaking/"
+  - title: "Rollup - Tree Shaking"
+    url: "https://rollupjs.org/guide/en/#tree-shaking"
+status: "published"
+---
+
+<DefinitionBlock>
+Tree shaking is a dead code elimination technique used by modern JavaScript bundlers like Webpack, Rollup, and esbuild. It analyzes your code's static structure using ES modules (import/export) to identify and remove unused exports, reducing bundle size. The name comes from the mental model of shaking a tree to let dead leaves fall off.
+</DefinitionBlock>
+
+## How Tree Shaking Works
+
+Tree shaking relies on ES modules' **static structure**:
+
+```javascript
+// ES Modules - Static imports ( analyzable )
+import { useState } from 'react';  // Only import what's needed
+
+// CommonJS - Dynamic requires ( harder to analyze )
+const react = require('react');    // Gets everything
+```
+
+The key difference: ES modules are statically analyzable at build time, while CommonJS is dynamic.
+
+## ES Modules vs CommonJS
+
+### ES Modules (Tree-shakeable)
+
+```javascript
+// utils.js
+export function add(a, b) { return a + b; }
+export function subtract(a, b) { return a - b; }
+export function multiply(a, b) { return a * b; }
+export default function calculator() { ... }
+
+// app.js - Only imports add
+import { add } from './utils';
+console.log(add(2, 3));
+
+// Result: subtract, multiply, and default are tree-shaken
+```
+
+### CommonJS (Not tree-shakeable by default)
+
+```javascript
+// utils.js
+exports.add = function(a, b) { return a + b; };
+exports.subtract = function(a, b) { return a - b; };
+
+// app.js
+const utils = require('./utils');  // Gets everything
+console.log(utils.add(2, 3));
+
+// Result: All exports included in bundle
+```
+
+## Side Effects
+
+Sometimes imports have side effects (e.g., polyfills, CSS imports):
+
+```javascript
+// Polyfills modify global objects - side effect
+import 'core-js/stable';
+
+// CSS - side effect
+import './styles.css';
+
+// Initialization - side effect
+import './analytics';  // Runs code on import
+```
+
+Mark these in `package.json`:
+
+```json
+{
+  "name": "my-library",
+  "sideEffects": [
+    "*.css",
+    "./polyfills.js"
+  ]
+}
+```
+
+Or mark as side-effect free:
+
+```json
+{
+  "sideEffects": false
+}
+```
+
+## Configuring Webpack
+
+```javascript
+// webpack.config.js
+module.exports = {
+  mode: 'production',  // Tree shaking only in production
+  optimization: {
+    usedExports: true,  // Enable tree shaking
+    sideEffects: true,  // Check package.json sideEffects field
+    
+    splitChunks: {
+      chunks: 'all',
+      cacheGroups: {
+        vendor: {
+          test: /[\\/]node_modules[\\/]/,
+          name: 'vendors',
+          chunks: 'all',
+        },
+      },
+    },
+  },
+};
+```
+
+## Library Design for Tree Shaking
+
+### ❌ Bad: Everything in one object
+
+```javascript
+// library/index.js
+import { add } from './math';
+import { format } from './string';
+
+export default {
+  add,
+  format,
+  // ... 100 more functions
+};
+
+// Consumer gets EVERYTHING
+import lib from 'my-library';
+lib.add(1, 2);
+```
+
+### ✅ Good: Named exports
+
+```javascript
+// library/math.js
+export function add(a, b) { return a + b; }
+export function subtract(a, b) { return a - b; }
+
+// library/string.js
+export function format(str) { ... }
+
+// Consumer gets only what they import
+import { add } from 'my-library/math';
+```
+
+## Common Issues
+
+### 1. Babel Transpilation
+
+Babel can convert ES modules to CommonJS, breaking tree shaking:
+
+```json
+// .babelrc - WRONG
+{
+  "presets": ["@babel/preset-env"]
+}
+
+// Outputs CommonJS - no tree shaking!
+```
+
+```json
+// .babelrc - CORRECT
+{
+  "presets": [
+    ["@babel/preset-env", { "modules": false }]
+  ]
+}
+
+// Keeps ES modules - tree shaking works!
+```
+
+### 2. Transpiled Dependencies
+
+Some npm packages ship CommonJS:
+
+```javascript
+// Check if a library is tree-shakeable
+// Look for:
+// - ES module entry point (module/esm field in package.json)
+// - sideEffects: false
+
+// Use tools like:
+// - bundlephobia.com
+// - webpack-bundle-analyzer
+```
+
+### 3. Re-exports
+
+```javascript
+// index.js - Re-exports everything
+export * from './moduleA';
+export * from './moduleB';
+
+// If you only use one export from moduleA,
+// bundler might keep all of moduleA
+```
+
+Better approach:
+
+```javascript
+// Import directly from source
+import { specificFunction } from 'library/moduleA';
+```
+
+## Measuring Results
+
+### Webpack Bundle Analyzer
+
+```bash
+npm install --save-dev webpack-bundle-analyzer
+```
+
+```javascript
+// webpack.config.js
+const { BundleAnalyzerPlugin } = require('webpack-bundle-analyzer');
+
+module.exports = {
+  plugins: [
+    new BundleAnalyzerPlugin(),
+  ],
+};
+```
+
+### Build Output
+
+```bash
+# Webpack shows stats
+webpack --mode=production --json > stats.json
+
+# Analyze with webpack-bundle-analyzer
+npx webpack-bundle-analyzer stats.json
+```
+
+## Advanced Techniques
+
+### Pure Annotations
+
+Mark functions as pure (no side effects):
+
+```javascript
+// Terser will remove if unused
+const pureAdd = /*#__PURE__*/ (a, b) => a + b;
+
+// Used with default parameters
+function createComponent(props = /*#__PURE__*/ defaultProps()) {
+  // If createComponent is unused, defaultProps() call is removed
+}
+```
+
+### Conditional Exports
+
+```json
+// package.json
+{
+  "exports": {
+    ".": {
+      "import": "./esm/index.js",
+      "require": "./cjs/index.js"
+    },
+    "./math": {
+      "import": "./esm/math.js",
+      "require": "./cjs/math.js"
+    }
+  }
+}
+```
+
+## Framework-Specific Notes
+
+### React
+
+```javascript
+// Tree-shakeable
+import { useState, useEffect } from 'react';
+
+// Not tree-shakeable (imports everything)
+import React from 'react';
+React.useState();
+```
+
+### Lodash
+
+```javascript
+// NOT tree-shakeable (700+ KB)
+import _ from 'lodash';
+
+// Tree-shakeable (use lodash-es or specific imports)
+import debounce from 'lodash/debounce';
+// or
+import { debounce } from 'lodash-es';
+```
+
+### Material-UI
+
+```javascript
+// Path imports (faster dev builds)
+import Button from '@mui/material/Button';
+import TextField from '@mui/material/TextField';
+
+// Named imports (tree-shakeable in production with modern bundlers)
+// Slower in development due to full module resolution
+import { Button, TextField } from '@mui/material';
+```
+
+<KeyTakeaway>
+Tree shaking requires ES modules and works best with proper library design. Use named exports, mark side effects in package.json, configure your bundler correctly, and verify results with bundle analyzers. Avoid importing entire libraries when you only need specific functions—this is the most common cause of bundle bloat.
+</KeyTakeaway>
+
+## Checklist for Optimal Tree Shaking
+
+- [ ] Use ES modules (`import`/`export`)
+- [ ] Set `sideEffects` in package.json
+- [ ] Avoid default exports of large objects
+- [ ] Configure Babel with `modules: false`
+- [ ] Use deep imports for large libraries
+- [ ] Verify with webpack-bundle-analyzer
+- [ ] Check if dependencies are tree-shakeable
+- [ ] Minimize polyfills and side-effect imports

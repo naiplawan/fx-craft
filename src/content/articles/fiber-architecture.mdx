@@ -1,0 +1,167 @@
+---
+title: "Fiber Architecture"
+slug: "fiber-architecture"
+subtitle: "React's reconciliation engine internals"
+category: "react-internals"
+icon: "git-branch"
+description: "Deep dive into React Fiber, the data structure and algorithm that powers React's concurrent features"
+difficulty: "advanced"
+tags: ["react", "internals", "concurrency"]
+related: ["hydration", "concurrent-react", "reconciliation"]
+resources:
+  - title: "React Fiber Architecture"
+    url: "https://github.com/acdlite/react-fiber-architecture"
+  - title: "Building a Custom React Renderer"
+    url: "https://reactjs.org/docs/codebase-overview.html#fiber"
+status: "published"
+---
+
+<DefinitionBlock>
+Fiber is React's internal data structure and reconciliation algorithm introduced in React 16. It's a complete rewrite of React's core that enables features like concurrent rendering, Suspense, and error boundaries. The Fiber architecture breaks rendering work into units that can be paused, resumed, and prioritized.
+</DefinitionBlock>
+
+## Why Fiber?
+
+Before React 16, React used a **stack reconciler** that was synchronous and recursive. Once rendering started, it couldn't be interrupted. This caused issues:
+
+- **Blocking the main thread** - Large component trees could freeze the UI
+- **No priority system** - All updates were treated equally
+- **Limited error handling** - A single error could crash the entire app
+
+Fiber was designed to solve these problems by making rendering:
+- **Interruptible** - Work can be paused and resumed
+- **Prioritized** - More important updates can jump ahead
+- **Composable** - Enables new features like Suspense and Concurrent Mode
+
+## The Fiber Data Structure
+
+At its core, a Fiber is a JavaScript object representing a unit of work. Here's a simplified version:
+
+```javascript
+{
+  // Instance information
+  type: 'div',           // DOM tag or component function/class
+  key: null,             // React key for reconciliation
+  elementType: 'div',    // The element type
+
+  // Tree structure
+  child: Fiber | null,   // First child
+  sibling: Fiber | null, // Next sibling
+  return: Fiber | null,  // Parent fiber
+
+  // Work state
+  pendingProps: {...},   // Props to apply
+  memoizedProps: {...},  // Current props
+  memoizedState: {...},  // Current state
+  updateQueue: [...],    // Queued state updates
+
+  // Effects (React 18+ uses `flags` and subtree flags instead)
+  flags: 0,              // What work needs to be done (was `effectTag` pre-React 18)
+  subtreeFlags: 0,       // Aggregated flags from children
+
+  // Scheduling (React 18+ uses Lanes model instead of expirationTime)
+  lanes: 0,              // Binary lane bits representing update priority
+  childLanes: 0,         // Aggregated lanes from children
+  mode: 0,               // Development/production mode flags
+}
+```
+
+## The Fiber Tree
+
+Fibers form a **linked list tree structure** that makes traversal efficient:
+
+```
+Parent
+  └── Child
+        ├── Sibling 1
+        ├── Sibling 2
+        └── Sibling 3
+              └── Grandchild
+```
+
+Unlike the actual DOM tree, the Fiber tree uses three pointers:
+- **child** → First child
+- **sibling** → Next sibling
+- **return** → Parent (called "return" because it represents where to return after completing work)
+
+## The Render Phase
+
+React's reconciliation happens in two phases:
+
+### 1. Render Phase (Can be interrupted)
+React builds the Fiber tree and determines what changes need to be made. This phase is **pure** and can be paused.
+
+```javascript
+function workLoop(isYieldy) {
+  while (nextUnitOfWork !== null && !shouldYield()) {
+    nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
+  }
+}
+```
+
+The `performUnitOfWork` function:
+1. Processes the current fiber
+2. Creates children fibers
+3. Returns the next fiber to process
+
+### 2. Commit Phase (Cannot be interrupted)
+Once React knows what changes to make, it applies them synchronously to the DOM.
+
+## Time Slicing and Prioritization
+
+Fiber enables **time slicing** - breaking work into small chunks:
+
+```javascript
+// Check if we should yield to the browser
+if (shouldYieldToHost()) {
+  // Pause work, let browser paint
+  scheduleCallback(continueWork);
+  return;
+}
+```
+
+React assigns priorities to updates using the **Lanes model** (React 18+), where each lane is a binary bit representing a priority level:
+- **SyncLane** - Immediate execution (e.g., discrete input events)
+- **InputContinuousLane** - High priority (e.g., continuous events like scroll)
+- **DefaultLane** - Default priority (e.g., data fetching)
+- **TransitionLane** - Deferrable updates (e.g., `useTransition`, `startTransition`)
+- **IdleLane** - Lowest priority (e.g., prefetching offscreen content)
+
+## Double Buffering
+
+React maintains **two Fiber trees**:
+- **Current tree** - What's currently on screen
+- **Work-in-progress tree** - The tree being built
+
+This allows React to:
+- Keep the UI consistent during rendering
+- Discard incomplete work if a higher priority update arrives
+- Only swap trees when work is complete
+
+## Effects and Side Effects
+
+Side effects (DOM mutations, subscriptions, etc.) are collected during the render phase and executed during the commit phase:
+
+```javascript
+// Types of effect tags
+const Placement = /* insert new node */;
+const Update = /* update existing node */;
+const Deletion = /* remove node */;
+const Callback = /* run callback */;
+```
+
+Fibers with effects form a linked list for efficient traversal during commit.
+
+<KeyTakeaway>
+Fiber transforms React from a synchronous, recursive renderer into an asynchronous, priority-based scheduler. The key insight is separating rendering (what should change) from committing (applying changes), allowing React to pause work and prioritize updates based on importance.
+</KeyTakeaway>
+
+## Practical Implications
+
+Understanding Fiber helps you:
+- **Optimize render performance** - Know when work can be interrupted
+- **Debug effectively** - Understand why certain updates happen when they do
+- **Use concurrent features** - Leverage Suspense, transitions, and deferred values
+- **Build custom renderers** - React Native, React Three Fiber, etc.
+
+The Fiber architecture is what makes modern React features like Suspense, useTransition, and concurrent rendering possible.

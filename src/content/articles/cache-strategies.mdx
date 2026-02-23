@@ -1,0 +1,347 @@
+---
+title: "Cache Strategies (SWR)"
+slug: "cache-strategies"
+subtitle: "Patterns for efficient data fetching and caching"
+category: "networking"
+icon: "database"
+description: "Stale-While-Revalidate and other caching patterns for fast, fresh data"
+difficulty: "intermediate"
+tags: ["caching", "performance", "http", "swr"]
+related: ["service-workers"]
+resources:
+  - title: "SWR Documentation"
+    url: "https://swr.vercel.app/"
+  - title: "HTTP Caching - Web.dev"
+    url: "https://web.dev/http-cache/"
+status: "published"
+---
+
+<DefinitionBlock>
+SWR (Stale-While-Revalidate) is a caching strategy where you serve cached (stale) data immediately while simultaneously fetching fresh data in the background. Once the new data arrives, the cache is updated and the UI refreshes. This pattern provides instant UI feedback while ensuring data eventually becomes consistent.
+</DefinitionBlock>
+
+## The Problem
+
+Traditional data fetching patterns:
+
+```javascript
+// Pattern 1: Loading states
+const [data, setData] = useState(null);
+const [loading, setLoading] = useState(true);
+
+useEffect(() => {
+  fetchData().then(data => {
+    setData(data);
+    setLoading(false);
+  });
+}, []);
+
+if (loading) return <Spinner />;
+return <Content data={data} />;
+```
+
+Problems:
+- User sees loading spinner every time
+- Slow perceived performance
+- No offline support
+
+## The SWR Pattern
+
+```javascript
+import useSWR from 'swr';
+
+function Profile() {
+  // Returns cached data immediately, revalidates in background
+  const { data, error, isLoading } = useSWR('/api/user', fetcher);
+
+  // Show stale data while loading, or show loading if no cache
+  if (isLoading && !data) return <Spinner />;
+  if (error) return <Error />;
+
+  return (
+    <div>
+      <h1>{data.name}</h1>
+      {isLoading && <span>Refreshing...</span>}
+    </div>
+  );
+}
+```
+
+User experience:
+1. First visit: Shows spinner → shows data
+2. Return visit: Shows cached data immediately → updates in background
+3. Offline: Shows cached data (if available)
+
+## How It Works
+
+### 1. Cache Lookup
+
+```
+User requests data
+    ↓
+Check cache
+    ↓
+┌──────────────────────────────────────┐
+│ Cache hit?                           │
+│ YES → Return immediately (stale)     │
+│ NO  → Wait for fetch                 │
+└──────────────────────────────────────┘
+    ↓
+Revalidate in background
+    ↓
+Update cache + UI
+```
+
+### 2. Deduplication
+
+```javascript
+// Multiple components request same data
+function ComponentA() {
+  const { data } = useSWR('/api/user', fetcher);
+  return ...;
+}
+
+function ComponentB() {
+  const { data } = useSWR('/api/user', fetcher);  // Same key!
+  return ...;
+}
+
+// Only ONE request is made, shared between both components
+```
+
+### 3. Revalidation Triggers
+
+SWR automatically revalidates when:
+- Component mounts
+- Window regains focus
+- Network reconnects
+- Interval elapsed
+
+```javascript
+const { data } = useSWR('/api/data', fetcher, {
+  revalidateOnFocus: true,      // Revalidate when window focuses
+  revalidateOnReconnect: true,  // Revalidate when back online
+  refreshInterval: 5000,        // Poll every 5 seconds
+});
+```
+
+## HTTP Cache Integration
+
+### Cache-Control Headers
+
+```javascript
+// Server sets caching headers
+app.get('/api/data', (req, res) => {
+  res.set('Cache-Control', 'max-age=60, stale-while-revalidate=300');
+  res.json(data);
+});
+```
+
+| Header | Meaning |
+|--------|---------|
+| `max-age=60` | Fresh for 60 seconds |
+| `stale-while-revalidate=300` | Can serve stale for 5 min while revalidating |
+
+### SWR + HTTP Cache Strategy
+
+```javascript
+const fetcher = async (url) => {
+  const response = await fetch(url, {
+    // Use fetch with HTTP caching
+    cache: 'default',  // Respect Cache-Control headers
+  });
+  return response.json();
+};
+```
+
+## Advanced Patterns
+
+### 1. Optimistic UI
+
+Update UI before API confirms:
+
+```javascript
+const { mutate } = useSWR('/api/todos');
+
+async function addTodo(newTodo) {
+  // Optimistically update
+  mutate(
+    current => [...current, newTodo],
+    false  // Don't revalidate yet
+  );
+
+  try {
+    await api.addTodo(newTodo);
+    // Revalidate to confirm
+    mutate();
+  } catch (error) {
+    // Rollback on error
+    mutate();
+  }
+}
+```
+
+### 2. Pagination with Cache
+
+```javascript
+function TodoList() {
+  const [page, setPage] = useState(1);
+  
+  const { data, error } = useSWR(
+    `/api/todos?page=${page}`,
+    fetcher,
+    { keepPreviousData: true }  // Show old data while loading new page
+  );
+
+  return (
+    <div>
+      {data}  {/* keepPreviousData keeps old data in `data` until new data loads */}
+      <button onClick={() => setPage(p => p + 1)}>Next</button>
+    </div>
+  );
+}
+```
+
+### 3. Conditional Fetching
+
+```javascript
+// Only fetch when userId is available
+const { data } = useSWR(
+  userId ? `/api/user/${userId}` : null,
+  fetcher
+);
+```
+
+### 4. Global Configuration
+
+```javascript
+// pages/_app.js
+import { SWRConfig } from 'swr';
+
+function MyApp({ Component, pageProps }) {
+  return (
+    <SWRConfig
+      value={{
+        fetcher: (url) => fetch(url).then(r => r.json()),
+        revalidateOnFocus: false,
+        refreshInterval: 60000,
+      }}
+    >
+      <Component {...pageProps} />
+    </SWRConfig>
+  );
+}
+```
+
+## Implementing Without SWR
+
+Custom implementation:
+
+```javascript
+const cache = new Map();
+
+function useCustomSWR(key, fetcher) {
+  const [data, setData] = useState(cache.get(key));
+  const [isValidating, setIsValidating] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function revalidate() {
+      setIsValidating(true);
+      
+      try {
+        const fresh = await fetcher(key);
+        if (!cancelled) {
+          cache.set(key, fresh);
+          setData(fresh);
+        }
+      } finally {
+        if (!cancelled) setIsValidating(false);
+      }
+    }
+
+    // Return cached data immediately
+    if (!cache.has(key)) {
+      revalidate();
+    } else {
+      // Revalidate in background
+      revalidate();
+    }
+
+    return () => { cancelled = true; };
+  }, [key]);
+
+  return { data, isValidating };
+}
+```
+
+## Other Caching Strategies
+
+### Cache-First
+
+Show cached data, only fetch if no cache:
+
+```javascript
+const { data } = useSWR(key, fetcher, {
+  revalidateIfStale: false,  // Don't revalidate
+});
+```
+
+### Network-First
+
+Try network, fall back to cache:
+
+```javascript
+const fetcher = async (url) => {
+  try {
+    return await fetch(url).then(r => r.json());
+  } catch (error) {
+    // Return from cache on error
+    return getFromCache(url);
+  }
+};
+```
+
+### Cache-Then-Network
+
+Show cache immediately, always fetch fresh:
+
+```javascript
+const { data } = useSWR(key, fetcher, {
+  revalidateOnMount: true,
+});
+```
+
+## Error Handling
+
+```javascript
+const { data, error, isLoading } = useSWR('/api/data', fetcher, {
+  onErrorRetry: (error, key, config, revalidate, { retryCount }) => {
+    // Stop retrying after 3 attempts
+    if (retryCount >= 3) return;
+    
+    // Retry after 5 seconds
+    setTimeout(() => revalidate({ retryCount }), 5000);
+  },
+  errorRetryCount: 3,
+});
+```
+
+<KeyTakeaway>
+SWR provides a superior user experience by showing cached data immediately while refreshing in the background. This eliminates loading states for returning users, provides offline support, and reduces server load through intelligent deduplication. Combine with proper HTTP caching headers for optimal performance.
+</KeyTakeaway>
+
+## When to Use SWR
+
+✅ **Good for**:
+- Dashboard data that updates periodically
+- User profiles and settings
+- Lists that change infrequently
+- Offline-first applications
+
+❌ **Not ideal for**:
+- Real-time data (use WebSockets)
+- Financial transactions (need strong consistency)
+- Search results (always fresh)
+- Data that must never be stale
