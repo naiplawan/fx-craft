@@ -1,19 +1,284 @@
 ---
 title: "WebSockets"
 slug: "websockets"
-subtitle: "Deep dive into websockets"
-category: "browser-apis"
+subtitle: "Real-time bidirectional communication"
+category: "networking"
 icon: "wifi"
-description: "Understanding websockets and its applications in modern web development"
+description: "Build real-time applications with WebSockets for bidirectional, low-latency communication between client and server"
 difficulty: "intermediate"
-tags: ["browser","real-time","networking"]
-related: []
-resources: []
-status: "stub"
+tags: ["networking","real-time","websocket"]
+related: ["sse","long-polling","webrtc"]
+resources:
+  - title: "MDN - WebSocket API"
+    url: "https://developer.mozilla.org/en-US/docs/Web/API/WebSocket"
+  - title: "WebSocket.org"
+    url: "https://www.websocket.org/"
+status: "published"
 ---
 
 <DefinitionBlock>
-WebSockets is a concept in frontend engineering. This article is currently being written.
+WebSockets provide a persistent, low-latency, full-duplex connection between client and server. Unlike HTTP polling, WebSockets maintain an open TCP connection, enabling real-time bidirectional data flow perfect for chat apps, live updates, and gaming.
 </DefinitionBlock>
 
-<StubNotice />
+## Basic Usage
+
+### Creating a Connection
+```javascript
+const socket = new WebSocket('wss://example.com/socket');
+
+// Connection opened
+socket.addEventListener('open', (event) => {
+  console.log('Connected to server');
+  socket.send('Hello Server!');
+});
+
+// Listen for messages
+socket.addEventListener('message', (event) => {
+  console.log('Message from server:', event.data);
+});
+
+// Connection closed
+socket.addEventListener('close', (event) => {
+  console.log('Disconnected from server');
+});
+
+// Handle errors
+socket.addEventListener('error', (error) => {
+  console.error('WebSocket error:', error);
+});
+```
+
+### Connection States
+```javascript
+console.log(socket.readyState);
+// 0 - CONNECTING
+// 1 - OPEN
+// 2 - CLOSING
+// 3 - CLOSED
+
+// Check if open before sending
+if (socket.readyState === WebSocket.OPEN) {
+  socket.send(data);
+}
+```
+
+## Sending Data
+
+### Text Messages
+```javascript
+socket.send('Hello World');
+```
+
+### Binary Data
+```javascript
+// Send ArrayBuffer
+const buffer = new ArrayBuffer(128);
+socket.send(buffer);
+
+// Send Blob
+const blob = new Blob(['Hello'], { type: 'text/plain' });
+socket.send(blob);
+```
+
+### JSON Messages
+```javascript
+const message = {
+  type: 'chat',
+  user: 'John',
+  text: 'Hello everyone!',
+  timestamp: Date.now()
+};
+
+socket.send(JSON.stringify(message));
+
+// Receiving JSON
+socket.addEventListener('message', (event) => {
+  const data = JSON.parse(event.data);
+  console.log(data.user, 'says:', data.text);
+});
+```
+
+## Advanced Patterns
+
+### Reconnection Logic
+```javascript
+class ReconnectingWebSocket {
+  constructor(url, options = {}) {
+    this.url = url;
+    this.reconnectInterval = options.reconnectInterval || 1000;
+    this.maxReconnects = options.maxReconnects || 5;
+    this.reconnectCount = 0;
+    this.listeners = {};
+    
+    this.connect();
+  }
+  
+  connect() {
+    this.socket = new WebSocket(this.url);
+    
+    this.socket.onopen = () => {
+      console.log('Connected');
+      this.reconnectCount = 0;
+      this.emit('open');
+    };
+    
+    this.socket.onmessage = (event) => {
+      this.emit('message', event);
+    };
+    
+    this.socket.onclose = () => {
+      this.emit('close');
+      this.attemptReconnect();
+    };
+    
+    this.socket.onerror = (error) => {
+      this.emit('error', error);
+    };
+  }
+  
+  attemptReconnect() {
+    if (this.reconnectCount < this.maxReconnects) {
+      this.reconnectCount++;
+      console.log(`Reconnecting... (${this.reconnectCount}/${this.maxReconnects})`);
+      
+      setTimeout(() => this.connect(), this.reconnectInterval);
+    }
+  }
+  
+  send(data) {
+    if (this.socket.readyState === WebSocket.OPEN) {
+      this.socket.send(data);
+    }
+  }
+  
+  on(event, callback) {
+    if (!this.listeners[event]) {
+      this.listeners[event] = [];
+    }
+    this.listeners[event].push(callback);
+  }
+  
+  emit(event, data) {
+    if (this.listeners[event]) {
+      this.listeners[event].forEach(callback => callback(data));
+    }
+  }
+  
+  close() {
+    this.socket.close();
+  }
+}
+
+// Usage
+const ws = new ReconnectingWebSocket('wss://chat.example.com');
+ws.on('message', (event) => console.log(event.data));
+```
+
+### Heartbeat/Ping
+```javascript
+class WebSocketClient {
+  constructor(url) {
+    this.url = url;
+    this.socket = null;
+    this.pingInterval = null;
+    this.missedPongs = 0;
+  }
+  
+  connect() {
+    this.socket = new WebSocket(this.url);
+    
+    this.socket.onopen = () => {
+      this.startHeartbeat();
+    };
+    
+    this.socket.onmessage = (event) => {
+      if (event.data === 'pong') {
+        this.missedPongs = 0;
+      } else {
+        this.handleMessage(event.data);
+      }
+    };
+    
+    this.socket.onclose = () => {
+      this.stopHeartbeat();
+    };
+  }
+  
+  startHeartbeat() {
+    this.pingInterval = setInterval(() => {
+      if (this.missedPongs > 2) {
+        this.socket.close();
+        return;
+      }
+      
+      this.socket.send('ping');
+      this.missedPongs++;
+    }, 30000); // 30 seconds
+  }
+  
+  stopHeartbeat() {
+    clearInterval(this.pingInterval);
+  }
+}
+```
+
+## Use Cases
+
+### Real-time Chat
+```javascript
+const chatSocket = new WebSocket('wss://chat.example.com');
+
+// Send message
+function sendMessage(text) {
+  chatSocket.send(JSON.stringify({
+    type: 'message',
+    text: text,
+    timestamp: Date.now()
+  }));
+}
+
+// Receive messages
+chatSocket.onmessage = (event) => {
+  const message = JSON.parse(event.data);
+  
+  switch(message.type) {
+    case 'message':
+      displayMessage(message);
+      break;
+    case 'user_joined':
+      showNotification(`${message.user} joined`);
+      break;
+    case 'user_left':
+      showNotification(`${message.user} left`);
+      break;
+  }
+};
+```
+
+### Live Dashboard
+```javascript
+const dashboardSocket = new WebSocket('wss://metrics.example.com');
+
+dashboardSocket.onmessage = (event) => {
+  const update = JSON.parse(event.data);
+  
+  updateChart(update.metric, update.value);
+  updateCounter(update.metric, update.value);
+};
+```
+
+## Security Considerations
+
+```javascript
+// Always use WSS (WebSocket Secure) in production
+const socket = new WebSocket('wss://secure.example.com');
+
+// Validate origin on server
+// Implement authentication
+// Use subprotocols for versioning
+const socket = new WebSocket('wss://example.com', ['chat-v1']);
+```
+
+<KeyTakeaway>
+WebSockets enable real-time bidirectional communication ideal for chat, live updates, and gaming. Implement reconnection logic for reliability, use heartbeats to detect dead connections, and always use WSS in production. Remember that WebSockets maintain persistent connections, so implement proper connection management.
+</KeyTakeaway>

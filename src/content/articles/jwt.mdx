@@ -1,19 +1,286 @@
 ---
 title: "JWT Security"
 slug: "jwt"
-subtitle: "Deep dive into jwt security"
+subtitle: "JSON Web Tokens for secure authentication"
 category: "security"
 icon: "file-key"
-description: "Understanding jwt security and its applications in modern web development"
+description: "Understand JWT structure, signing, verification, and secure implementation practices"
 difficulty: "intermediate"
-tags: ["security","auth","tokens"]
-related: []
-resources: []
-status: "stub"
+tags: ["security","auth","tokens","jwt"]
+related: ["oauth","https","xss"]
+resources:
+  - title: "JWT.io"
+    url: "https://jwt.io/"
+  - title: "OWASP JWT Security"
+    url: "https://cheatsheetseries.owasp.org/cheatsheets/JSON_Web_Token_for_Java_Cheat_Sheet.html"
+status: "published"
 ---
 
 <DefinitionBlock>
-JWT Security is a concept in frontend engineering. This article is currently being written.
+JSON Web Token (JWT) is an open standard for securely transmitting information between parties as a JSON object. JWTs are digitally signed and optionally encrypted, making them ideal for authentication and information exchange.
 </DefinitionBlock>
 
-<StubNotice />
+## JWT Structure
+
+```
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9
+.
+eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ
+.
+SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c
+
+Header.Payload.Signature
+```
+
+### Header
+```json
+{
+  "alg": "HS256",
+  "typ": "JWT"
+}
+```
+
+### Payload (Claims)
+```json
+{
+  "sub": "1234567890",
+  "name": "John Doe",
+  "iat": 1516239022,
+  "exp": 1516242622,
+  "role": "admin"
+}
+```
+
+### Signature
+```
+HMACSHA256(
+  base64UrlEncode(header) + "." +
+  base64UrlEncode(payload),
+  secret
+)
+```
+
+## Client-Side Usage
+
+### Storing Tokens
+```javascript
+// LocalStorage (accessible to JavaScript - XSS risk)
+localStorage.setItem('token', jwt);
+
+// SessionStorage (cleared when tab closes)
+sessionStorage.setItem('token', jwt);
+
+// Cookie with HttpOnly (secure, server only - recommended)
+// Set by server: Set-Cookie: token=xxx; HttpOnly; Secure; SameSite=Strict
+```
+
+### Sending Tokens
+```javascript
+// As Authorization header
+fetch('/api/protected', {
+  headers: {
+    'Authorization': `Bearer ${localStorage.getItem('token')}`
+  }
+});
+
+// Axios interceptor
+axios.interceptors.request.use(config => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+```
+
+### Token Parsing
+```javascript
+// Decode JWT (no verification - client-side only)
+function parseJWT(token) {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    return null;
+  }
+}
+
+// Check expiration
+const payload = parseJWT(token);
+if (payload?.exp < Date.now() / 1000) {
+  // Token expired, refresh or logout
+}
+```
+
+## Security Best Practices
+
+### 1. Short Expiration + Refresh Tokens
+```javascript
+// Access token: short-lived (15 minutes)
+// Refresh token: long-lived, stored securely
+
+async function getValidToken() {
+  let token = localStorage.getItem('accessToken');
+  const payload = parseJWT(token);
+  
+  // If expiring in less than 5 minutes
+  if (payload?.exp - Date.now() / 1000 < 300) {
+    const refreshToken = localStorage.getItem('refreshToken');
+    const response = await fetch('/api/refresh', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken })
+    });
+    
+    if (response.ok) {
+      const { accessToken } = await response.json();
+      localStorage.setItem('accessToken', accessToken);
+      return accessToken;
+    } else {
+      // Refresh failed, logout
+      logout();
+    }
+  }
+  
+  return token;
+}
+```
+
+### 2. Token Rotation
+```javascript
+// Each refresh gives new refresh token
+// Old refresh tokens invalidated (prevents replay attacks)
+
+async function refreshToken() {
+  const response = await fetch('/api/refresh', {
+    method: 'POST',
+    credentials: 'include' // Send refresh token cookie
+  });
+  
+  if (response.ok) {
+    const { accessToken } = await response.json();
+    localStorage.setItem('accessToken', accessToken);
+  }
+}
+```
+
+### 3. Secure Storage
+```javascript
+// Bad: localStorage (vulnerable to XSS)
+localStorage.setItem('token', token);
+
+// Good: httpOnly cookie (XSS can't steal)
+// Set by server, not accessible to JS
+
+// Better: Memory-only with silent refresh
+let accessToken = null;
+
+async function getToken() {
+  if (!accessToken) {
+    // Try silent refresh
+    accessToken = await silentRefresh();
+  }
+  return accessToken;
+}
+```
+
+## Common Vulnerabilities
+
+### None Algorithm Attack
+```javascript
+// Attacker modifies header to use "none" algorithm
+// Always verify algorithm on server
+```
+
+### Weak Secrets
+```javascript
+// Bad: Short or predictable secrets
+const secret = 'password123';
+
+// Good: Long random strings
+const secret = crypto.randomBytes(64).toString('hex');
+```
+
+### Token Theft
+```javascript
+// XSS steals token from localStorage
+// Mitigation: httpOnly cookies + CSP
+
+// Implement logout on all devices
+function logoutAll() {
+  fetch('/api/logout-all', {
+    method: 'POST',
+    credentials: 'include'
+  });
+  localStorage.removeItem('token');
+}
+```
+
+## Implementation Example
+
+```javascript
+// auth.js
+class AuthManager {
+  constructor() {
+    this.accessToken = null;
+    this.refreshPromise = null;
+  }
+  
+  async getToken() {
+    if (this.accessToken && !this.isExpired(this.accessToken)) {
+      return this.accessToken;
+    }
+    
+    // Prevent multiple simultaneous refresh requests
+    if (!this.refreshPromise) {
+      this.refreshPromise = this.refresh().finally(() => {
+        this.refreshPromise = null;
+      });
+    }
+    
+    return this.refreshPromise;
+  }
+  
+  async refresh() {
+    try {
+      const response = await fetch('/api/refresh', {
+        method: 'POST',
+        credentials: 'include'
+      });
+      
+      if (!response.ok) throw new Error('Refresh failed');
+      
+      const { accessToken } = await response.json();
+      this.accessToken = accessToken;
+      return accessToken;
+    } catch (error) {
+      this.logout();
+      throw error;
+    }
+  }
+  
+  isExpired(token) {
+    const payload = parseJWT(token);
+    return payload?.exp < Date.now() / 1000;
+  }
+  
+  logout() {
+    this.accessToken = null;
+    fetch('/api/logout', { method: 'POST', credentials: 'include' });
+    window.location = '/login';
+  }
+}
+
+export const auth = new AuthManager();
+```
+
+<KeyTakeaway>
+JWTs enable stateless authentication but require careful handling. Use short-lived access tokens with refresh tokens, store tokens securely (prefer httpOnly cookies), implement token rotation, and always validate on the server. Never trust client-side token parsing for security decisions.
+</KeyTakeaway>

@@ -1,5 +1,4 @@
 import { cn } from "@/lib/utils";
-import { Info } from "lucide-react";
 
 interface DefinitionBlockProps {
   title?: string;
@@ -15,17 +14,16 @@ export function DefinitionBlock({
   return (
     <div
       className={cn(
-        "rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden",
+        "not-prose my-6 p-4 rounded-lg",
+        "bg-gray-50 dark:bg-gray-800/50",
+        "border-l-2 border-gray-300 dark:border-gray-600",
         className
       )}
     >
-      <div className="flex items-center gap-2 px-4 py-3 bg-gray-900 dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
-        <Info className="w-4 h-4 text-[#7AB2B2]" />
-        <span className="text-sm font-semibold text-white dark:text-gray-100">
-          {title}
-        </span>
-      </div>
-      <div className="px-4 py-4 bg-white dark:bg-gray-950 prose dark:prose-invert max-w-none">
+      <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2 block">
+        {title}
+      </span>
+      <div className="text-base leading-relaxed text-gray-700 dark:text-gray-300">
         {children}
       </div>
     </div>

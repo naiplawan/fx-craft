@@ -1,19 +1,383 @@
 ---
 title: "Type Coercion"
 slug: "type-coercion"
-subtitle: "Deep dive into type coercion"
+subtitle: "How JavaScript converts types implicitly"
 category: "javascript-core"
 icon: "shuffle"
-description: "Understanding type coercion and its applications in modern web development"
+description: "Understanding implicit and explicit type conversion in JavaScript, equality operators, and common pitfalls"
 difficulty: "beginner"
 tags: ["javascript","types","weird-parts"]
-related: []
-resources: []
-status: "stub"
+related: ["prototypes","promises"]
+resources:
+  - title: "MDN - Type coercion"
+    url: "https://developer.mozilla.org/en-US/docs/Glossary/Type_coercion"
+  - title: "JavaScript Equality Table"
+    url: "https://dorey.github.io/JavaScript-Equality-Table/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Type Coercion is a concept in frontend engineering. This article is currently being written.
+Type coercion is the automatic or implicit conversion of values from one data type to another. JavaScript is a loosely typed language with dynamic coercion rules that can lead to unexpected results when not fully understood.
 </DefinitionBlock>
 
-<StubNotice />
+## Implicit Coercion
+
+### String Coercion
+```javascript
+// Number to String
+console.log("5" + 3);      // "53" (number converted to string)
+console.log("5" - 3);      // 2 (string converted to number)
+console.log("5" * "2");    // 10 (both converted to numbers)
+
+// Boolean to String
+console.log("result: " + true);  // "result: true"
+console.log("count: " + null);   // "count: null"
+
+// Object to String
+console.log("user: " + {});      // "user: [object Object]"
+console.log("" + [1, 2, 3]);     // "1,2,3"
+```
+
+### Number Coercion
+```javascript
+// Unary plus operator
+console.log(+"42");        // 42
+console.log(+true);        // 1
+console.log(+false);       // 0
+console.log(+null);        // 0
+console.log(+undefined);   // NaN
+
+// Arithmetic operations
+console.log("6" / "2");    // 3
+console.log("10" % "3");   // 1
+console.log(10 - "5");     // 5
+
+// Empty string
+console.log(+"");          // 0
+console.log("" - 1);       // -1
+```
+
+### Boolean Coercion
+```javascript
+// Logical operators
+console.log(!"hello");     // false (string is truthy)
+console.log(!0);           // true (0 is falsy)
+console.log(!!"test");     // true (double negation)
+
+// In conditions
+if ("string") { /* executes */ }
+if (42) { /* executes */ }
+if (0) { /* doesn't execute */ }
+if ("") { /* doesn't execute */ }
+```
+
+## Explicit Coercion
+
+### String Conversion
+```javascript
+// String constructor
+String(42);                // "42"
+String(true);              // "true"
+String(null);              // "null"
+String(undefined);         // "undefined"
+String([1, 2, 3]);         // "1,2,3"
+String({a: 1});            // "[object Object]"
+
+// toString method
+(42).toString();           // "42"
+true.toString();           // "true"
+[1, 2, 3].toString();      // "1,2,3"
+
+// Template literals
+`${42}`;                   // "42"
+`${{name: 'John'}}`;       // "[object Object]"
+```
+
+### Number Conversion
+```javascript
+// Number constructor
+Number("42");              // 42
+Number("3.14");            // 3.14
+Number("");                // 0
+Number("   ");             // 0
+Number("hello");           // NaN
+Number(true);              // 1
+Number(false);             // 0
+Number(null);              // 0
+Number(undefined);         // NaN
+
+// Parse functions (more lenient)
+parseInt("42px");          // 42
+parseInt("101", 2);        // 5 (binary)
+parseInt("FF", 16);        // 255 (hex)
+parseFloat("3.14abc");     // 3.14
+
+// Unary plus (shorthand)
++"42";                     // 42
++true;                     // 1
+```
+
+### Boolean Conversion
+```javascript
+// Boolean constructor
+Boolean(1);                // true
+Boolean(0);                // false
+Boolean("hello");          // true
+Boolean("");               // false
+Boolean([]);               // true
+Boolean({});               // true
+Boolean(null);             // false
+Boolean(undefined);        // false
+
+// Double negation (shorthand)
+!!"hello";                 // true
+!!0;                      // false
+!![];                     // true
+!!{};                     // true
+```
+
+## Falsy Values
+
+```javascript
+// These coerce to false
+false
+0
+-0
+0n (BigInt zero)
+"" (empty string)
+null
+undefined
+NaN
+document.all (legacy quirk)
+
+// Everything else is truthy
+if ([]) console.log("Empty array is truthy");
+if ({}) console.log("Empty object is truthy");
+if ("0") console.log("String '0' is truthy");
+if (" ") console.log("String with space is truthy");
+```
+
+## Equality Operators
+
+### Loose Equality (==)
+```javascript
+// Type coercion happens!
+5 == "5";                  // true (string converted to number)
+0 == false;                // true
+1 == true;                 // true
+"" == false;               // true
+null == undefined;         // true
+
+// Arrays and objects
+[] == false;               // true
+[] == 0;                   // true
+[1] == "1";                // true
+[1, 2] == "1,2";           // true
+
+// Surprising cases
+[] == ![];                 // true (![] is false, [] == false)
+"0" == false;              // true
+0 == "0";                  // true
+
+// NaN is never equal to anything
+NaN == NaN;                // false
+```
+
+### Strict Equality (===)
+```javascript
+// No type coercion
+5 === "5";                 // false (different types)
+5 === 5;                   // true
+null === undefined;        // false
+
+// Always use === and !==
+// Only exception: checking null/undefined together
+if (value == null) {
+  // catches both null and undefined
+}
+```
+
+### Object Comparison
+```javascript
+// Object reference comparison
+{} === {};                 // false (different objects)
+[] === [];                 // false
+
+const obj = {};
+obj === obj;               // true (same reference)
+
+// Arrays
+[1, 2, 3] == [1, 2, 3];    // false
+[1, 2, 3] === [1, 2, 3];   // false
+```
+
+## Abstract Equality Algorithm
+
+### The Rules
+1. If types are same, use ===
+2. null and undefined are equal to each other
+3. Number and String: convert string to number
+4. Boolean: convert to number (true=1, false=0)
+5. Object and Primitive: convert object to primitive
+
+```javascript
+// Object to primitive conversion
+const obj = {
+  valueOf() { return 42; },
+  toString() { return "hello"; }
+};
+
+obj == 42;                 // true (valueOf used)
+obj == "hello";            // false (valueOf takes precedence)
+
+// When valueOf returns object
+// default:
+obj == "hello";          // true (falls back to toString)
+```
+
+## Common Pitfalls
+
+### The typeof null Bug
+```javascript
+typeof null === "object";  // true (historical bug)
+
+// Safe null check
+function isNull(value) {
+  return value === null;
+}
+
+// Check for object (excluding null)
+function isObject(value) {
+  return typeof value === "object" && value !== null;
+}
+```
+
+### Array.isArray
+```javascript
+typeof [];                 // "object"
+Array.isArray([]);         // true
+
+// Safe array check
+function isArray(value) {
+  return Array.isArray(value);
+}
+```
+
+### parseInt Gotchas
+```javascript
+parseInt(0.0000008);       // 8 (!!!)
+// Because: 0.0000008 -> "8e-7" -> parseInt stops at 'e'
+
+// Always use radix
+parseInt("08");            // 8 (in strict mode)
+parseInt("08", 10);        // 8 (explicit, safe)
+```
+
+### isNaN vs Number.isNaN
+```javascript
+isNaN("hello");            // true (coerces to NaN)
+isNaN(undefined);          // true
+isNaN({});                 // true
+
+Number.isNaN("hello");     // false (no coercion)
+Number.isNaN(NaN);         // true
+Number.isNaN(0/0);         // true
+```
+
+## Best Practices
+
+### Always Use Strict Equality
+```javascript
+// Good
+if (count === 5) { }
+if (name !== "") { }
+
+// Bad
+if (count == 5) { }
+if (name != "") { }
+
+// Exception: null/undefined check
+if (value == null) {
+  // value is either null or undefined
+}
+```
+
+### Explicit Conversions
+```javascript
+// Good - explicit
+const num = Number(input);
+const str = String(value);
+const bool = Boolean(count);
+
+// Acceptable - clear intent
+const num = +input;
+const str = `${value}`;
+const bool = !!count;
+
+// Bad - implicit, confusing
+const num = input - 0;
+const str = value + "";
+const bool = count ? true : false;
+```
+
+### Defensive Coding
+```javascript
+// Convert to number safely
+function toNumber(value) {
+  const num = Number(value);
+  return Number.isNaN(num) ? 0 : num;
+}
+
+// Convert to string safely
+function toString(value) {
+  if (value == null) return "";
+  return String(value);
+}
+
+// Check for valid number
+function isValidNumber(value) {
+  return typeof value === "number" && 
+         !Number.isNaN(value) && 
+         Number.isFinite(value);
+}
+```
+
+## Practical Examples
+
+### Form Input Handling
+```javascript
+// Input values are always strings
+function calculateTotal(priceInput, quantityInput) {
+  const price = Number(priceInput) || 0;
+  const quantity = parseInt(quantityInput, 10) || 0;
+  return price * quantity;
+}
+
+// User input: "19.99" and "3"
+calculateTotal("19.99", "3"); // 59.97
+```
+
+### URL Parameter Parsing
+```javascript
+const params = new URLSearchParams("?page=1&active=true");
+
+const page = parseInt(params.get("page"), 10); // 1
+const active = params.get("active") === "true";  // true (explicit)
+```
+
+### Feature Detection
+```javascript
+// Check if feature exists
+if (typeof fetch !== "undefined") {
+  // Use fetch API
+}
+
+// Check for null/undefined
+if (config != null) {
+  // config has some value
+}
+```
+
+<KeyTakeaway>
+Always prefer strict equality (===) over loose equality (==) to avoid unexpected coercion. When conversion is needed, be explicit with Number(), String(), or Boolean(). Understand falsy values and use Array.isArray() and Number.isNaN() for reliable type checking. Explicit is better than implicit - make your intentions clear in the code.
+</KeyTakeaway>

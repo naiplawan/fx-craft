@@ -1,19 +1,407 @@
 ---
 title: "Promises"
 slug: "promises"
-subtitle: "Deep dive into promises"
+subtitle: "Manage asynchronous operations with elegance"
 category: "javascript-core"
 icon: "check-circle"
-description: "Understanding promises and its applications in modern web development"
+description: "Understanding JavaScript Promises from the ground up - creation, chaining, error handling, and modern patterns"
 difficulty: "intermediate"
 tags: ["javascript","async","promises"]
-related: []
-resources: []
-status: "stub"
+related: ["async-await","event-loop","generators"]
+resources:
+  - title: "MDN - Promise"
+    url: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Promise"
+  - title: "Promise.js Library"
+    url: "https://github.com/then/promise"
+status: "published"
 ---
 
 <DefinitionBlock>
-Promises is a concept in frontend engineering. This article is currently being written.
+A Promise is an object representing the eventual completion or failure of an asynchronous operation. It allows you to attach callbacks to handle the eventual success value or failure reason, providing a cleaner alternative to callback-based async code.
 </DefinitionBlock>
 
-<StubNotice />
+## Promise States
+
+```javascript
+const promise = new Promise((resolve, reject) => {
+  // Promise starts in "pending" state
+  
+  if (success) {
+    resolve(value); // Transition to "fulfilled"
+  } else {
+    reject(error);  // Transition to "rejected"
+  }
+});
+
+// States:
+// 1. Pending   - Initial state, not yet completed
+// 2. Fulfilled - Operation completed successfully
+// 3. Rejected  - Operation failed
+// 4. Settled   - Either fulfilled or rejected
+```
+
+## Creating Promises
+
+### Basic Promise Constructor
+```javascript
+const fetchData = new Promise((resolve, reject) => {
+  setTimeout(() => {
+    const data = { id: 1, name: 'John' };
+    resolve(data);
+  }, 1000);
+});
+
+fetchData
+  .then(data => console.log(data))
+  .catch(error => console.error(error));
+```
+
+### Wrapping Callback APIs
+```javascript
+// Convert callback-based API to Promise
+function readFilePromise(path) {
+  return new Promise((resolve, reject) => {
+    fs.readFile(path, 'utf8', (err, data) => {
+      if (err) reject(err);
+      else resolve(data);
+    });
+  });
+}
+
+// Usage
+readFilePromise('./file.txt')
+  .then(content => console.log(content))
+  .catch(error => console.error('Failed to read:', error));
+```
+
+### Promisify Pattern
+```javascript
+function promisify(fn) {
+  return function(...args) {
+    return new Promise((resolve, reject) => {
+      fn(...args, (err, result) => {
+        if (err) reject(err);
+        else resolve(result);
+      });
+    });
+  };
+}
+
+// Usage
+const readFileAsync = promisify(fs.readFile);
+const statAsync = promisify(fs.stat);
+```
+
+## Chaining
+
+### Then Chaining
+```javascript
+fetchUser(1)
+  .then(user => {
+    console.log('User:', user);
+    return fetchOrders(user.id);
+  })
+  .then(orders => {
+    console.log('Orders:', orders);
+    return calculateTotal(orders);
+  })
+  .then(total => {
+    console.log('Total:', total);
+  })
+  .catch(error => {
+    console.error('Error in chain:', error);
+  });
+```
+
+### Return Values
+```javascript
+// Returning a value
+Promise.resolve(5)
+  .then(x => x * 2)           // returns 10
+  .then(x => x + 1)           // returns 11
+  .then(console.log);         // 11
+
+// Returning a Promise
+Promise.resolve(1)
+  .then(x => Promise.resolve(x * 2)) // returns Promise
+  .then(x => x + 1)                  // unwraps to 3
+  .then(console.log);
+```
+
+## Error Handling
+
+### Catch Block
+```javascript
+fetchUser(1)
+  .then(user => fetchOrders(user.id))
+  .then(orders => processOrders(orders))
+  .catch(error => {
+    // Catches any rejection in the chain
+    console.error('Operation failed:', error);
+    return defaultOrders;
+  })
+  .then(orders => displayOrders(orders));
+```
+
+### Error Recovery
+```javascript
+fetchData()
+  .catch(error => {
+    console.warn('Primary source failed, trying backup...');
+    return fetchBackupData();
+  })
+  .then(data => {
+    // Uses either primary or backup data
+    processData(data);
+  })
+  .catch(error => {
+    // Both sources failed
+    showErrorMessage('Data unavailable');
+  });
+```
+
+### Finally Block
+```javascript
+showLoadingSpinner();
+
+fetchData()
+  .then(data => updateUI(data))
+  .catch(error => showError(error))
+  .finally(() => {
+    // Always runs, success or failure
+    hideLoadingSpinner();
+  });
+```
+
+## Promise Combinators
+
+### Promise.all
+```javascript
+// Wait for all promises to fulfill
+const promises = [
+  fetchUser(1),
+  fetchPosts(),
+  fetchSettings()
+];
+
+Promise.all(promises)
+  .then(([user, posts, settings]) => {
+    console.log('All loaded:', { user, posts, settings });
+  })
+  .catch(error => {
+    // If ANY promise rejects
+    console.error('At least one failed:', error);
+  });
+
+// With error handling per promise
+Promise.all(
+  promises.map(p => p.catch(err => ({ error: err.message })))
+)
+.then(results => {
+  // All results, including errors
+});
+```
+
+### Promise.allSettled
+```javascript
+// Wait for all promises to settle (success or failure)
+const promises = [
+  fetchUser(1),
+  fetchPosts(), // Might fail
+  fetchSettings()
+];
+
+Promise.allSettled(promises)
+  .then(results => {
+    results.forEach(result => {
+      if (result.status === 'fulfilled') {
+        console.log('Success:', result.value);
+      } else {
+        console.error('Failed:', result.reason);
+      }
+    });
+  });
+
+// Results array:
+// [
+//   { status: 'fulfilled', value: ... },
+//   { status: 'rejected', reason: ... },
+//   { status: 'fulfilled', value: ... }
+// ]
+```
+
+### Promise.race
+```javascript
+// Returns the first settled promise
+const timeout = new Promise((_, reject) => {
+  setTimeout(() => reject(new Error('Timeout')), 5000);
+});
+
+Promise.race([fetchData(), timeout])
+  .then(data => console.log('Success:', data))
+  .catch(error => console.error('Failed:', error.message));
+```
+
+### Promise.any
+```javascript
+// Returns first fulfilled promise (ignores rejections)
+const mirrors = [
+  fetch('https://mirror1.example.com'),
+  fetch('https://mirror2.example.com'),
+  fetch('https://mirror3.example.com')
+];
+
+Promise.any(mirrors)
+  .then(response => console.log('First successful:', response))
+  .catch(error => {
+    // AggregateError if all rejected
+    console.error('All mirrors failed:', error.errors);
+  });
+```
+
+## Static Methods
+
+### Quick Creation
+```javascript
+// Resolved promise
+const resolved = Promise.resolve(42);
+
+// Rejected promise
+const rejected = Promise.reject(new Error('Failed'));
+
+// From iterable
+const promises = [1, 2, 3].map(n => Promise.resolve(n * 2));
+```
+
+## Anti-Patterns
+
+### The Promise Constructor Antipattern
+```javascript
+// Wrong - Unnecessary wrapping
+function getUser(id) {
+  return new Promise((resolve, reject) => {
+    fetchUser(id)
+      .then(user => resolve(user))
+      .catch(err => reject(err));
+  });
+}
+
+// Correct - Just return the promise
+function getUser(id) {
+  return fetchUser(id);
+}
+```
+
+### Nested Promises
+```javascript
+// Wrong - Promise pyramid of doom
+fetchUser(1)
+  .then(user => {
+    return fetchOrders(user.id)
+      .then(orders => {
+        return calculateTotal(orders)
+          .then(total => {
+            return { user, orders, total };
+          });
+      });
+  });
+
+// Correct - Flat chain
+fetchUser(1)
+  .then(user => 
+    fetchOrders(user.id)
+      .then(orders => ({ user, orders }))
+  )
+  .then(({ user, orders }) =>
+    calculateTotal(orders)
+      .then(total => ({ user, orders, total }))
+  );
+```
+
+### Forgetting to Return
+```javascript
+// Wrong - Missing return creates broken chain
+fetchUser(1)
+  .then(user => {
+    fetchOrders(user.id); // Missing return!
+  })
+  .then(orders => {
+    // orders is undefined!
+  });
+
+// Correct
+fetchUser(1)
+  .then(user => fetchOrders(user.id))
+  .then(orders => processOrders(orders));
+```
+
+## Modern Patterns
+
+### Sequential Execution
+```javascript
+// Sequential processing with reduce
+const urls = ['/api/1', '/api/2', '/api/3'];
+
+const results = await urls.reduce(async (promise, url) => {
+  const results = await promise;
+  const response = await fetch(url);
+  const data = await response.json();
+  return [...results, data];
+}, Promise.resolve([]));
+```
+
+### Parallel with Concurrency Limit
+```javascript
+async function* parallelWithLimit(tasks, limit) {
+  const executing = new Set();
+  
+  for (const task of tasks) {
+    const promise = task().then(result => {
+      executing.delete(promise);
+      return result;
+    });
+    
+    executing.add(promise);
+    
+    if (executing.size >= limit) {
+      yield await Promise.race(executing);
+    }
+  }
+  
+  yield* executing;
+}
+
+// Usage: Process with max 3 concurrent
+for await (const result of parallelWithLimit(tasks, 3)) {
+  console.log(result);
+}
+```
+
+### Retry Logic
+```javascript
+function retry(fn, maxAttempts = 3) {
+  return function(...args) {
+    return new Promise((resolve, reject) => {
+      const attempt = (n) => {
+        fn(...args)
+          .then(resolve)
+          .catch(error => {
+            if (n === maxAttempts) {
+              reject(error);
+            } else {
+              setTimeout(() => attempt(n + 1), 1000 * n);
+            }
+          });
+      };
+      attempt(1);
+    });
+  };
+}
+
+const fetchWithRetry = retry(fetchData, 3);
+fetchWithRetry('/api/data').then(console.log);
+```
+
+<KeyTakeaway>
+Promises provide a robust foundation for async programming in JavaScript. Master chaining with `.then()`, handle errors with `.catch()`, use `Promise.all()` for parallel operations, and avoid common antipatterns like unnecessary wrapping. For most modern code, async/await provides cleaner syntax, but understanding Promises is essential for debugging and advanced patterns.
+</KeyTakeaway>

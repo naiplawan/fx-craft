@@ -1,19 +1,320 @@
 ---
 title: "Focus Management"
 slug: "focus-management"
-subtitle: "Deep dive into focus management"
+subtitle: "Control keyboard navigation flow"
 category: "accessibility"
 icon: "crosshair"
-description: "Understanding focus management and its applications in modern web development"
+description: "Manage focus for modals, dynamic content, and keyboard navigation to ensure accessible user experiences"
 difficulty: "intermediate"
-tags: ["a11y","focus","keyboard"]
-related: []
-resources: []
-status: "stub"
+tags: ["a11y","focus","keyboard","modals"]
+related: ["aria","keyboard-navigation","screen-readers"]
+resources:
+  - title: "MDN - focus()"
+    url: "https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/focus"
+  - title: "W3C Modal Dialog Pattern"
+    url: "https://www.w3.org/WAI/ARIA/apg/patterns/dialog-modal/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Focus Management is a concept in frontend engineering. This article is currently being written.
+Focus management controls which element receives keyboard input. Proper focus handling is essential for keyboard users and screen reader users, especially when opening modals, navigating single-page applications, or handling dynamic content updates.
 </DefinitionBlock>
 
-<StubNotice />
+## Focus Basics
+
+### Focusable Elements
+```html
+<!-- Naturally focusable -->
+<a href="...">Link</a>
+<button>Button</button>
+<input />
+<select>...</select>
+<textarea>...</textarea>
+<iframe>...</iframe>
+
+<!-- Make focusable -->
+<div tabindex="0">Focusable div</div>
+```
+
+### Tabindex Values
+```html
+<!-- tabindex="0" - Focusable in natural tab order -->
+<div tabindex="0">Custom widget</div>
+
+<!-- tabindex="-1" - Programmatically focusable only -->
+<div tabindex="-1" id="error-summary">Errors... (focused on validation)</div>
+
+<!-- tabindex=">0" - Avoid: Creates custom tab order -->
+<div tabindex="5">Don't do this</div>
+```
+
+## Modal Dialog Focus
+
+### Focus Trap
+```javascript
+function FocusTrap(container) {
+  const focusableElements = container.querySelectorAll(
+    'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+  );
+  
+  const firstElement = focusableElements[0];
+  const lastElement = focusableElements[focusableElements.length - 1];
+  
+  container.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab') return;
+    
+    if (e.shiftKey && document.activeElement === firstElement) {
+      e.preventDefault();
+      lastElement.focus();
+    } else if (!e.shiftKey && document.activeElement === lastElement) {
+      e.preventDefault();
+      firstElement.focus();
+    }
+  });
+}
+
+// Usage
+const modal = document.getElementById('modal');
+FocusTrap(modal);
+```
+
+### Modal Pattern
+```javascript
+class Modal {
+  constructor(element) {
+    this.element = element;
+    this.previousActiveElement = null;
+  }
+  
+  open() {
+    // Save current focus
+    this.previousActiveElement = document.activeElement;
+    
+    // Show modal
+    this.element.hidden = false;
+    
+    // Focus first focusable element or modal itself
+    const focusable = this.element.querySelector(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    
+    if (focusable) {
+      focusable.focus();
+    } else {
+      this.element.tabIndex = -1;
+      this.element.focus();
+    }
+    
+    // Trap focus
+    this.trapFocus();
+  }
+  
+  close() {
+    // Hide modal
+    this.element.hidden = true;
+    
+    // Restore focus
+    if (this.previousActiveElement) {
+      this.previousActiveElement.focus();
+    }
+  }
+  
+  trapFocus() {
+    this.element.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        this.close();
+      }
+    });
+  }
+}
+```
+
+## Focus Management Patterns
+
+### Skip Links
+```html
+<!-- Hidden skip link visible on focus -->
+<a href="#main-content" class="skip-link">
+  Skip to main content
+</a>
+
+<main id="main-content" tabindex="-1">
+  <!-- Content here -->
+</main>
+
+<style>
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: #000;
+  color: #fff;
+  padding: 8px;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 0;
+}
+</style>
+```
+
+### Dynamic Content
+```javascript
+// Move focus to new content
+function loadNewContent() {
+  const newSection = document.createElement('section');
+  newSection.innerHTML = '<h2 tabindex="-1">New Content</h2>...';
+  newSection.id = 'new-section';
+  
+  document.body.appendChild(newSection);
+  
+  // Focus the heading
+  newSection.querySelector('h2').focus();
+  
+  // Announce to screen readers
+  announce('New content loaded');
+}
+
+function announce(message) {
+  const announcer = document.createElement('div');
+  announcer.setAttribute('aria-live', 'polite');
+  announcer.setAttribute('aria-atomic', 'true');
+  announcer.className = 'sr-only';
+  document.body.appendChild(announcer);
+  
+  setTimeout(() => {
+    announcer.textContent = message;
+  }, 100);
+  
+  setTimeout(() => {
+    document.body.removeChild(announcer);
+  }, 1000);
+}
+```
+
+### Form Validation
+```javascript
+function validateForm(form) {
+  const errors = [];
+  
+  // Validate fields...
+  
+  if (errors.length > 0) {
+    // Create error summary
+    const summary = document.createElement('div');
+    summary.setAttribute('role', 'alert');
+    summary.setAttribute('tabindex', '-1');
+    summary.innerHTML = `
+      <h2>Please fix the following errors:</h2>
+      <ul>
+        ${errors.map(e => `<li><a href="#${e.fieldId}">${e.message}</a></li>`).join('')}
+      </ul>
+    `;
+    
+    form.prepend(summary);
+    
+    // Focus error summary
+    summary.focus();
+    
+    return false;
+  }
+  
+  return true;
+}
+```
+
+## React Focus Management
+
+### useFocusTrap Hook
+```javascript
+import { useEffect, useRef } from 'react';
+
+function useFocusTrap(isActive) {
+  const containerRef = useRef(null);
+  const previousFocus = useRef(null);
+  
+  useEffect(() => {
+    if (isActive) {
+      // Store previous focus
+      previousFocus.current = document.activeElement;
+      
+      // Focus first element in container
+      const container = containerRef.current;
+      const focusable = container?.querySelector(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      focusable?.focus();
+      
+      // Handle Tab key
+      const handleKeyDown = (e) => {
+        if (e.key !== 'Tab') return;
+        
+        const focusableElements = container.querySelectorAll(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        
+        const first = focusableElements[0];
+        const last = focusableElements[focusableElements.length - 1];
+        
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      };
+      
+      document.addEventListener('keydown', handleKeyDown);
+      
+      return () => {
+        document.removeEventListener('keydown', handleKeyDown);
+        // Restore focus
+        previousFocus.current?.focus();
+      };
+    }
+  }, [isActive]);
+  
+  return containerRef;
+}
+```
+
+## Best Practices
+
+### Visible Focus Indicators
+```css
+/* Never remove focus outline without replacement */
+/* ❌ Bad */
+*:focus {
+  outline: none;
+}
+
+/* ✅ Good */
+*:focus {
+  outline: 2px solid #005fcc;
+  outline-offset: 2px;
+}
+
+/* ✅ Alternative */
+*:focus-visible {
+  outline: 2px solid #005fcc;
+  outline-offset: 2px;
+}
+```
+
+### Focus vs Click
+```javascript
+// Don't move focus on click unless necessary
+button.addEventListener('click', () => {
+  // Don't do this unless needed
+  // button.focus();
+  
+  // Do this
+  openModal();
+});
+```
+
+<KeyTakeaway>
+Manage focus to support keyboard navigation and screen reader users. Trap focus in modals, restore focus when closing, and move focus to new content. Always provide visible focus indicators and test with keyboard-only navigation.
+</KeyTakeaway>

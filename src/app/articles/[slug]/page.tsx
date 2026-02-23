@@ -54,10 +54,10 @@ export default async function ArticlePage({ params }: ArticlePageProps) {
   const content = await compileArticleContent(article);
 
   return (
-    <article className="container mx-auto px-4 sm:px-6 lg:px-8 py-12 max-w-4xl">
+    <article className="mx-auto px-4 sm:px-6 lg:px-8 py-12 max-w-3xl">
       <ArticleHeader article={article} />
 
-      <div className="prose dark:prose-invert max-w-none">
+      <div className="prose-content">
         {article.status === "stub" ? (
           <StubNotice />
         ) : (

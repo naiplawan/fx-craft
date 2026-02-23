@@ -1,19 +1,307 @@
 ---
 title: "Edge Rendering"
 slug: "edge-rendering"
-subtitle: "Deep dive into edge rendering"
+subtitle: "Render at the edge for low latency"
 category: "rendering"
 icon: "cloud"
-description: "Understanding edge rendering and its applications in modern web development"
+description: "Use edge computing to render pages closer to users for faster response times"
 difficulty: "intermediate"
-tags: ["edge","cdn","performance"]
-related: []
-resources: []
-status: "stub"
+tags: ["edge","cdn","performance","serverless"]
+related: ["ssg","streaming-ssr","server-components"]
+resources:
+  - title: "Vercel Edge Functions"
+    url: "https://vercel.com/docs/functions/edge-functions"
+  - title: "Cloudflare Workers"
+    url: "https://workers.cloudflare.com/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Edge Rendering is a concept in frontend engineering. This article is currently being written.
+Edge rendering executes code at CDN edge locations close to users rather than at a central origin server. This dramatically reduces latency (often <50ms) by minimizing the distance data travels, enabling dynamic personalization without sacrificing performance.
 </DefinitionBlock>
 
-<StubNotice />
+## Edge vs Origin
+
+### Traditional Architecture
+```
+User in Tokyo ───► Origin in US (200ms latency)
+                 
+User in London ───► Origin in US (150ms latency)
+
+Everyone connects to one central server
+```
+
+### Edge Architecture
+```
+User in Tokyo ───► Edge in Tokyo (20ms latency)
+                 
+User in London ───► Edge in London (15ms latency)
+                 
+User in NYC ───► Edge in NYC (10ms latency)
+
+100+ edge locations worldwide
+```
+
+## Edge Runtime
+
+### Characteristics
+```javascript
+// Edge functions run in V8 isolates (not Node.js)
+// - Cold start: 0ms (always warm)
+// - Memory: 128MB-1024MB
+// - CPU: Limited (not for heavy computation)
+// - Execution time: 30s-5min depending on platform
+// - Network: Fetch API only
+```
+
+### What Works
+```javascript
+// ✅ Works on Edge
+export const config = {
+  runtime: 'edge'
+};
+
+export default async function handler(req) {
+  // Fetch data
+  const data = await fetch('https://api.example.com/data').then(r => r.json());
+  
+  // Read headers/cookies
+  const token = req.headers.get('authorization');
+  const country = req.geo?.country;
+  
+  // Return HTML or JSON
+  return new Response(renderHTML(data), {
+    headers: { 'Content-Type': 'text/html' }
+  });
+}
+```
+
+### What Doesn't Work
+```javascript
+// ❌ Not available on Edge
+const fs = require('fs');           // No file system
+const db = require('./db');          // No direct DB connections
+const sharp = require('sharp');      // No native modules
+const crypto = require('crypto');    // Use Web Crypto API instead
+```
+
+## Use Cases
+
+### 1. Geolocation Personalization
+```javascript
+// middleware.ts (Next.js)
+import { NextResponse } from 'next/server';
+
+export function middleware(request) {
+  const country = request.geo?.country || 'US';
+  const currency = country === 'UK' ? 'GBP' : 'USD';
+  
+  // Rewrite to localized version
+  return NextResponse.rewrite(
+    new URL(`/${country}${request.nextUrl.pathname}`, request.url)
+  );
+}
+```
+
+### 2. A/B Testing
+```javascript
+export const config = { runtime: 'edge' };
+
+export default function handler(req) {
+  // Assign variant at edge (no origin hit)
+  const variant = Math.random() < 0.5 ? 'a' : 'b';
+  
+  // Set cookie for consistency
+  const res = NextResponse.next();
+  res.cookies.set('ab-test', variant);
+  
+  return res;
+}
+```
+
+### 3. Authentication at Edge
+```javascript
+export const config = { runtime: 'edge' };
+
+export default async function handler(req) {
+  const token = req.cookies.get('token');
+  
+  // Verify JWT at edge
+  const isValid = await verifyToken(token);
+  
+  if (!isValid) {
+    return NextResponse.redirect(new URL('/login', req.url));
+  }
+  
+  // Add user info to headers for upstream
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('x-user-id', getUserIdFromToken(token));
+  
+  return NextResponse.next({
+    request: { headers: requestHeaders }
+  });
+}
+```
+
+### 4. Dynamic OG Images
+```javascript
+// Edge-generated social images
+export const config = { runtime: 'edge' };
+
+export default async function handler(req) {
+  const { title, author } = req.query;
+  
+  // Generate SVG on edge
+  const svg = `
+    <svg width="1200" height="630">
+      <rect fill="#1a1a1a" width="1200" height="630"/>
+      <text fill="white" x="50" y="200" font-size="64">${title}</text>
+      <text fill="#888" x="50" y="500" font-size="32">By ${author}</text>
+    </svg>
+  `;
+  
+  return new Response(svg, {
+    headers: {
+      'Content-Type': 'image/svg+xml',
+      'Cache-Control': 'public, max-age=86400'
+    }
+  });
+}
+```
+
+## Next.js Edge
+
+### Edge API Routes
+```typescript
+// pages/api/hello.ts
+export const config = {
+  runtime: 'edge'
+};
+
+export default async function handler(req: Request) {
+  return new Response(JSON.stringify({ message: 'Hello from edge!' }), {
+    headers: { 'content-type': 'application/json' }
+  });
+}
+```
+
+### Edge Middleware
+```typescript
+// middleware.ts
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+
+export function middleware(request: NextRequest) {
+  // Check auth token
+  const token = request.cookies.get('token')?.value;
+  
+  if (!token && request.nextUrl.pathname.startsWith('/dashboard')) {
+    return NextResponse.redirect(new URL('/login', request.url));
+  }
+  
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: ['/dashboard/:path*', '/api/protected/:path*']
+};
+```
+
+## Vercel Edge Functions
+
+```javascript
+// api/hello.js
+export default function handler(request) {
+  return new Response(`Hello from ${request.geo.city}!`);
+}
+
+export const config = {
+  runtime: 'edge'
+};
+```
+
+### Available APIs
+```javascript
+// Request
+request.geo         // { city, country, region, latitude, longitude }
+request.ip          // User IP address
+request.nextUrl     // Parsed URL
+
+// Response
+NextResponse.json()        // JSON response
+NextResponse.redirect()    // Redirect
+NextResponse.rewrite()     // URL rewrite
+NextResponse.next()        // Continue to origin
+```
+
+## Best Practices
+
+### 1. Keep It Light
+```javascript
+// ✅ Good: Quick decision making
+export function middleware(req) {
+  const country = req.geo.country;
+  if (country === 'CN') {
+    return NextResponse.rewrite(new URL('/cn-version', req.url));
+  }
+  return NextResponse.next();
+}
+
+// ❌ Bad: Heavy computation
+export async function handler(req) {
+  // Don't process images or heavy data at edge
+  const processed = await heavyImageProcessing(req.body);
+}
+```
+
+### 2. Cache Aggressively
+```javascript
+export default async function handler(req) {
+  const data = await fetch('https://api.example.com/data', {
+    next: { revalidate: 60 } // ISR at edge
+  });
+  
+  return new Response(data, {
+    headers: {
+      'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300'
+    }
+  });
+}
+```
+
+### 3. Fallback to Origin
+```javascript
+export function middleware(req) {
+  try {
+    // Try edge logic
+    return doEdgeLogic(req);
+  } catch (error) {
+    // Fallback to origin server
+    return NextResponse.next();
+  }
+}
+```
+
+## Limitations
+
+### Compute Constraints
+```
+- No Node.js built-ins (fs, path, crypto)
+- Limited npm packages (no native dependencies)
+- No long-running processes
+- Shared nothing architecture (no in-memory state)
+```
+
+### Database Connections
+```javascript
+// ❌ Can't hold persistent connections
+const db = new Database(); // Connection per request
+
+// ✅ Use connectionless protocols
+// HTTP APIs, REST, GraphQL
+// Or use edge databases like PlanetScale, Fauna
+```
+
+<KeyTakeaway>
+Edge rendering brings computation closer to users for ultra-low latency. Ideal for personalization, A/B testing, auth checks, and middleware. Keep edge functions lightweight—use them for routing decisions, not heavy processing. Combine with origin servers for complex business logic and database operations.
+</KeyTakeaway>

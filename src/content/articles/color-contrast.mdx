@@ -1,19 +1,227 @@
 ---
 title: "Color Contrast"
 slug: "color-contrast"
-subtitle: "Deep dive into color contrast"
+subtitle: "Ensure readable text for all users"
 category: "accessibility"
 icon: "contrast"
-description: "Understanding color contrast and its applications in modern web development"
+description: "Meet WCAG contrast requirements for text visibility and accessibility"
 difficulty: "beginner"
-tags: ["a11y","design","wcag"]
-related: []
-resources: []
-status: "stub"
+tags: ["a11y","design","wcag","color"]
+related: ["semantic-html","screen-readers"]
+resources:
+  - title: "WCAG Contrast Guidelines"
+    url: "https://www.w3.org/WAI/WCAG21/Understanding/contrast-minimum.html"
+  - title: "WebAIM Contrast Checker"
+    url: "https://webaim.org/resources/contrastchecker/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Color Contrast is a concept in frontend engineering. This article is currently being written.
+Color contrast refers to the difference in luminance between foreground (text) and background colors. Sufficient contrast ensures text is readable by users with visual impairments, including color blindness, and improves readability for everyone, especially in bright sunlight or on low-quality displays.
 </DefinitionBlock>
 
-<StubNotice />
+## WCAG Contrast Requirements
+
+### Contrast Ratios
+```
+Normal Text:
+- AA: 4.5:1 minimum
+- AAA: 7:1 minimum
+
+Large Text (18pt+ or 14pt+ bold):
+- AA: 3:1 minimum
+- AAA: 4.5:1 minimum
+
+UI Components/Graphics:
+- AA: 3:1 minimum
+```
+
+### Calculating Contrast
+```javascript
+// Relative luminance formula
+function getLuminance(r, g, b) {
+  const [rs, gs, bs] = [r, g, b].map(val => {
+    val = val / 255;
+    return val <= 0.03928
+      ? val / 12.92
+      : Math.pow((val + 0.055) / 1.055, 2.4);
+  });
+  
+  return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+}
+
+function getContrastRatio(color1, color2) {
+  const lum1 = getLuminance(...color1);
+  const lum2 = getLuminance(...color2);
+  
+  const brightest = Math.max(lum1, lum2);
+  const darkest = Math.min(lum1, lum2);
+  
+  return (brightest + 0.05) / (darkest + 0.05);
+}
+
+// Example: White on Blue
+const white = [255, 255, 255];
+const blue = [0, 100, 200];
+const ratio = getContrastRatio(white, blue); // 4.6:1 (passes AA)
+```
+
+## Testing Contrast
+
+### Browser DevTools
+```css
+/* Chrome DevTools shows contrast ratio */
+.my-text {
+  color: #666666; /* DevTools shows: Contrast ratio 5.74:1 ✓ */
+}
+```
+
+### Automated Testing
+```javascript
+// Using axe-core
+const axe = require('axe-core');
+
+const results = await axe.run();
+const contrastViolations = results.violations.filter(
+  v => v.id === 'color-contrast'
+);
+```
+
+### Visual Testing
+```css
+/* Simulate color blindness */
+/* Chrome DevTools: Rendering > Emulate vision deficiencies */
+
+.protanopia { filter: url('#protanopia'); }
+.deuteranopia { filter: url('#deuteranopia'); }
+.tritanopia { filter: url('#tritanopia'); }
+.achromatopsia { filter: grayscale(100%); }
+```
+
+## Common Issues
+
+### Low Contrast Text
+```css
+/* ❌ Too light */
+.text-light {
+  color: #cccccc; /* 1.6:1 on white - FAILS */
+}
+
+/* ✅ Good contrast */
+.text-good {
+  color: #595959; /* 7:1 on white - PASSES AAA */
+}
+```
+
+### Placeholder Text
+```css
+/* ❌ Placeholders often too light */
+input::placeholder {
+  color: #999999; /* Often fails contrast */
+}
+
+/* ✅ Darker placeholder */
+input::placeholder {
+  color: #666666; /* 5.74:1 on white */
+}
+```
+
+### Links Without Underlines
+```css
+/* ❌ Color-only differentiation */
+a {
+  color: #0066cc;
+  text-decoration: none; /* Hard to see if color blind */
+}
+
+/* ✅ Underline or sufficient contrast */
+a {
+  color: #0052a3; /* Darker blue */
+  text-decoration: underline;
+}
+
+/* Or */
+a {
+  color: #0066cc;
+  text-decoration: none;
+  border-bottom: 1px solid currentColor;
+}
+```
+
+## Best Practices
+
+### Don't Rely on Color Alone
+```css
+/* ❌ Color-only error indication */
+.error {
+  color: #ff0000;
+}
+
+/* ✅ Add icon and text */
+.error {
+  color: #d32f2f;
+}
+.error::before {
+  content: "⚠️ ";
+}
+<!-- HTML: <span class="error">⚠️ Error: Invalid input</span> -->
+```
+
+### Focus Indicators
+```css
+/* ❌ No visible focus */
+button:focus {
+  outline: none;
+}
+
+/* ✅ Visible focus with sufficient contrast */
+button:focus {
+  outline: 2px solid #005fcc;
+  outline-offset: 2px;
+}
+```
+
+### Dark Mode Considerations
+```css
+:root {
+  --text-primary: #212121;
+  --bg-primary: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text-primary: #e0e0e0;
+    --bg-primary: #121212;
+  }
+}
+
+body {
+  color: var(--text-primary);
+  background: var(--bg-primary);
+}
+```
+
+## Tools
+
+### Online Checkers
+- WebAIM Contrast Checker
+- Colour Contrast Analyser (CCA)
+- Stark (Figma/Sketch plugin)
+- axe DevTools
+
+### CSS Custom Properties for Themes
+```css
+:root {
+  /* Ensure all combinations meet 4.5:1 */
+  --color-text: #212121;
+  --color-text-secondary: #616161;
+  --color-bg: #ffffff;
+  --color-bg-secondary: #f5f5f5;
+  --color-primary: #1565c0;
+  --color-error: #c62828;
+}
+```
+
+<KeyTakeaway>
+Maintain minimum 4.5:1 contrast for normal text and 3:1 for large text. Never rely on color alone to convey information. Test with automated tools and simulate color blindness. Good contrast benefits all users, not just those with visual impairments.
+</KeyTakeaway>

@@ -1,19 +1,388 @@
 ---
 title: "Event Loop"
 slug: "event-loop"
-subtitle: "Deep dive into event loop"
+subtitle: "How JavaScript handles asynchronous operations"
 category: "javascript-core"
-icon: "repeat"
-description: "Understanding event loop and its applications in modern web development"
-difficulty: "intermediate"
-tags: ["javascript","async","concurrency"]
-related: []
-resources: []
-status: "stub"
+icon: "refresh-cw"
+description: "Deep dive into the JavaScript event loop, call stack, task queues, and the concurrency model"
+difficulty: "advanced"
+tags: ["javascript","async","concurrency","performance"]
+related: ["promises","async-await","web-workers"]
+resources:
+  - title: "MDN - Event Loop"
+    url: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/EventLoop"
+  - title: "Jake Archibald - In The Loop"
+    url: "https://www.youtube.com/watch?v=cCOL7MC4Pl0"
+status: "published"
 ---
 
 <DefinitionBlock>
-Event Loop is a concept in frontend engineering. This article is currently being written.
+The event loop is JavaScript's mechanism for handling asynchronous operations. It is what allows JavaScript to perform non-blocking I/O operations despite being single-threaded, by offloading operations to the system kernel whenever possible and managing callbacks through queues.
 </DefinitionBlock>
 
-<StubNotice />
+## The Runtime Components
+
+### Call Stack
+```javascript
+// Synchronous execution
+function multiply(a, b) {
+  return a * b;
+}
+
+function square(n) {
+  return multiply(n, n);
+}
+
+function printSquare(n) {
+  const squared = square(n);
+  console.log(squared);
+}
+
+printSquare(4);
+
+// Execution order:
+// 1. printSquare enters stack
+// 2. square enters stack
+// 3. multiply enters stack
+// 4. multiply returns 16, exits
+// 5. square returns 16, exits
+// 6. console.log prints 16
+// 7. printSquare exits
+```
+
+### Web APIs (Browser Environment)
+```javascript
+// These are provided by the browser, not V8
+setTimeout(callback, delay);
+fetch(url);
+XMLHttpRequest;
+DOM events;
+requestAnimationFrame;
+```
+
+### Task Queues
+
+```javascript
+// Macrotask Queue
+setTimeout(() => console.log('timeout'), 0);
+setInterval(() => console.log('interval'), 1000);
+setImmediate(() => console.log('immediate')); // Node.js
+I/O operations;
+UI rendering;
+
+// Microtask Queue (Higher priority)
+Promise.then/catch/finally;
+queueMicrotask(callback);
+MutationObserver;
+process.nextTick; // Node.js
+```
+
+## How the Event Loop Works
+
+```
+┌─────────────────────────┐
+│        Call Stack       │
+│    (synchronous code)   │
+└───────────┬─────────────┘
+            │
+            ▼
+┌─────────────────────────┐
+│       Web APIs          │
+│  (async operations)     │
+└───────────┬─────────────┘
+            │
+    ┌───────┴───────┐
+    ▼               ▼
+┌──────────┐  ┌─────────────┐
+│Microtask │  │  Macrotask  │
+│  Queue   │  │   Queue     │
+└────┬─────┘  └──────┬──────┘
+     │               │
+     └───────┬───────┘
+             │
+             ▼
+    ┌─────────────────┐
+    │   Event Loop    │
+    │ (checks queues) │
+    └─────────────────┘
+```
+
+## Execution Order Example
+
+```javascript
+console.log('1'); // Synchronous
+
+setTimeout(() => {
+  console.log('2'); // Macrotask
+}, 0);
+
+Promise.resolve().then(() => {
+  console.log('3'); // Microtask
+});
+
+console.log('4'); // Synchronous
+
+// Output: 1, 4, 3, 2
+// Explanation:
+// 1. '1' and '4' execute immediately (call stack)
+// 2. Promise.then goes to microtask queue
+// 3. setTimeout goes to macrotask queue
+// 4. Call stack empty -> process microtasks -> '3'
+// 5. Microtasks empty -> process macrotasks -> '2'
+```
+
+## Detailed Execution Flow
+
+### Complex Example
+```javascript
+console.log('Script start');
+
+setTimeout(() => {
+  console.log('setTimeout 1');
+  Promise.resolve().then(() => {
+    console.log('Promise inside timeout');
+  });
+}, 0);
+
+setTimeout(() => {
+  console.log('setTimeout 2');
+}, 0);
+
+Promise.resolve().then(() => {
+  console.log('Promise 1');
+  Promise.resolve().then(() => {
+    console.log('Promise 2');
+  });
+});
+
+Promise.resolve().then(() => {
+  console.log('Promise 3');
+});
+
+console.log('Script end');
+
+// Output:
+// Script start
+// Script end
+// Promise 1
+// Promise 2
+// Promise 3
+// setTimeout 1
+// Promise inside timeout
+// setTimeout 2
+```
+
+## Microtasks vs Macrotasks
+
+### Priority Order
+```javascript
+console.log('1');
+
+setTimeout(() => console.log('2'), 0);
+Promise.resolve().then(() => console.log('3'));
+Promise.resolve().then(() => console.log('4'));
+setTimeout(() => console.log('5'), 0);
+
+// Output: 1, 3, 4, 2, 5
+// Microtasks execute before next macrotask
+```
+
+### Queue Processing
+```javascript
+// All microtasks execute before any macrotask
+Promise.resolve()
+  .then(() => console.log('microtask 1'))
+  .then(() => console.log('microtask 2'))
+  .then(() => console.log('microtask 3'));
+
+setTimeout(() => console.log('macrotask'), 0);
+
+// Output: microtask 1, 2, 3, then macrotask
+```
+
+## Practical Implications
+
+### Blocking the Event Loop
+```javascript
+// Never do this
+function blockFor(seconds) {
+  const start = Date.now();
+  while (Date.now() - start < seconds * 1000) {
+    // Blocks everything!
+  }
+}
+
+// UI freezes, no updates, no events processed
+blockFor(5);
+```
+
+### Yielding to Event Loop
+```javascript
+// Break up heavy work
+async function processLargeArray(items) {
+  const chunkSize = 100;
+  
+  for (let i = 0; i < items.length; i += chunkSize) {
+    const chunk = items.slice(i, i + chunkSize);
+    processChunk(chunk);
+    
+    // Yield to event loop
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+}
+```
+
+### requestAnimationFrame
+```javascript
+// Syncs with browser's repaint cycle
+function smoothAnimation() {
+  let start;
+  
+  function step(timestamp) {
+    if (!start) start = timestamp;
+    const progress = timestamp - start;
+    
+    // Update animation
+    element.style.transform = `translateX(${progress / 10}px)`;
+    
+    if (progress < 1000) {
+      requestAnimationFrame(step);
+    }
+  }
+  
+  requestAnimationFrame(step);
+}
+```
+
+## setTimeout(fn, 0) Explained
+
+```javascript
+console.log('A');
+
+setTimeout(() => {
+  console.log('B');
+}, 0);
+
+Promise.resolve().then(() => {
+  console.log('C');
+});
+
+console.log('D');
+
+// Output: A, D, C, B
+// Even with 0ms delay, setTimeout is a macrotask
+// and executes after all microtasks
+```
+
+## Node.js Event Loop
+
+### Phases Overview
+```javascript
+// Node.js has additional phases
+
+   ┌───────────────────────────┐
+┌─>│           timers          │
+│  └─────────────┬─────────────┘
+│  ┌─────────────┴─────────────┐
+│  │     pending callbacks     │
+│  └─────────────┬─────────────┘
+│  ┌─────────────┴─────────────┐
+│  │       idle, prepare       │
+│  └─────────────┬─────────────┘      ┌─────────────┐
+│  ┌─────────────┴─────────────┐      │   incoming: │
+│  │           poll            │<─────┤  connections│
+│  └─────────────┬─────────────┘      │   data, etc.│
+│  ┌─────────────┴─────────────┐      └─────────────┘
+│  │           check           │
+│  └─────────────┬─────────────┘
+│  ┌─────────────┴─────────────┐
+└──┤      close callbacks      │
+   └───────────────────────────┘
+```
+
+### process.nextTick
+```javascript
+// Highest priority - executes before any other phase
+console.log('1');
+
+process.nextTick(() => {
+  console.log('nextTick 1');
+  process.nextTick(() => console.log('nextTick 2'));
+});
+
+Promise.resolve().then(() => console.log('Promise'));
+setTimeout(() => console.log('setTimeout'), 0);
+
+console.log('2');
+
+// Output: 1, 2, nextTick 1, nextTick 2, Promise, setTimeout
+```
+
+## Common Pitfalls
+
+### MutationObserver Timing
+```javascript
+// MutationObserver is a microtask
+const observer = new MutationObserver(() => {
+  console.log('MutationObserver');
+});
+
+observer.observe(document.body, { childList: true });
+
+document.body.appendChild(document.createElement('div'));
+Promise.resolve().then(() => console.log('Promise'));
+
+// Output order can vary by browser implementation!
+```
+
+### Promise.resolve() vs new Promise
+```javascript
+// These behave differently!
+Promise.resolve().then(() => console.log('1'));
+new Promise(resolve => {
+  console.log('2');
+  resolve();
+}).then(() => console.log('3'));
+
+// Output: 2, 1, 3
+// Promise constructor runs synchronously
+```
+
+## Performance Considerations
+
+### Task Budgeting
+```javascript
+// Monitor frame time to avoid jank
+function scheduleWork(workFn) {
+  const start = performance.now();
+  
+  requestAnimationFrame(() => {
+    const frameTime = performance.now() - start;
+    
+    if (frameTime > 16) { // Missed 60fps budget
+      setTimeout(workFn, 0); // Defer to next frame
+    } else {
+      workFn();
+    }
+  });
+}
+```
+
+### Async Iterator Pattern
+```javascript
+async function* asyncGenerator() {
+  for (let i = 0; i < 10; i++) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    yield i;
+  }
+}
+
+// Automatically yields between iterations
+for await (const value of asyncGenerator()) {
+  console.log(value);
+}
+```
+
+<KeyTakeaway>
+The event loop enables JavaScript's non-blocking nature. Remember: call stack executes first, then all microtasks (Promises), then a single macrotask (setTimeout, etc.). Understanding execution order is crucial for debugging async code, avoiding race conditions, and writing performant applications that do not block the main thread.
+</KeyTakeaway>

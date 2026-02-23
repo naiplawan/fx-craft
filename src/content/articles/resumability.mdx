@@ -1,19 +1,296 @@
 ---
 title: "Resumability"
 slug: "resumability"
-subtitle: "Deep dive into resumability"
+subtitle: "Zero-hydration instant interactivity"
 category: "rendering"
 icon: "play"
-description: "Understanding resumability and its applications in modern web development"
+description: "Qwik's resumability paradigm eliminates hydration overhead by serializing application state and resuming execution"
 difficulty: "advanced"
-tags: ["qwik","hydration","performance"]
-related: []
-resources: []
-status: "stub"
+tags: ["qwik","hydration","performance","resumability"]
+related: ["hydration","partial-hydration","islands-architecture"]
+resources:
+  - title: "Qwik Resumability"
+    url: "https://qwik.builder.io/docs/concepts/resumable/"
+  - title: "Resumable vs Hydration"
+    url: "https://www.builder.io/blog/resumability-from-zero-to-hydration"
+status: "published"
 ---
 
 <DefinitionBlock>
-Resumability is a concept in frontend engineering. This article is currently being written.
+Resumability is a rendering paradigm pioneered by Qwik that eliminates the need for hydration. Instead of re-executing the application on the client to attach event listeners and rebuild state, the server serializes the entire application state into HTML. The browser "resumes" execution instantly without replaying component code.
 </DefinitionBlock>
 
-<StubNotice />
+## The Hydration Problem
+
+### Traditional SSR Flow
+```
+Server:                    Client:
+1. Execute app             1. Download HTML
+2. Generate HTML           2. Download JS (500KB)
+3. Send HTML               3. Parse JS
+                           4. Execute JS (re-run app)
+                           5. Build component tree
+                           6. Attach event listeners
+                           7. Page interactive
+                           
+Time to Interactive: 2-5 seconds
+```
+
+### The Cost
+```javascript
+// All this JavaScript must download and execute
+import React from 'react';
+import { Header, Footer, Sidebar, Content } from './components';
+import { Router, StateProvider } from './lib';
+import * as utils from './utils';
+// ... 500KB of dependencies
+
+function App() {
+  // All component code runs twice (server + client)
+  return (
+    <StateProvider>
+      <Router>
+        <Header />
+        <Sidebar />
+        <Content />
+        <Footer />
+      </Router>
+    </StateProvider>
+  );
+}
+```
+
+## How Resumability Works
+
+### Serialization
+```javascript
+// Server serializes:
+{
+  "state": {
+    "counter": {
+      "count": 5
+    },
+    "user": {
+      "name": "John",
+      "preferences": { "theme": "dark" }
+    }
+  },
+  "listeners": [
+    {
+      "element": "button#increment",
+      "event": "click",
+      "qrl": "./counter#increment"
+    }
+  ],
+  "refs": {
+    "counter-component": { "id": "counter-1", "state": "counter" }
+  }
+}
+```
+
+### HTML Output
+```html
+<div q:container="paused">
+  <div q:id="counter-1">
+    <span>Count: 5</span>
+    <button
+      q:listener="click:./counter#increment"
+      on:click="q-factory.js#handleEvent"
+    >
+      +
+    </button>
+  </div>
+</div>
+
+<script type="qwik/json">
+{"state": {"counter-1": {"count": 5}}}
+</script>
+```
+
+### Lazy Loading
+```javascript
+// No JavaScript loaded initially!
+// Only when user clicks:
+
+// 1. Download handler (1KB)
+import { increment } from './counter.js';
+
+// 2. Deserialize state
+const state = { count: 5 };
+
+// 3. Execute handler
+increment(state); // count = 6
+
+// 4. Update DOM
+element.textContent = 'Count: 6';
+```
+
+## Qwik Implementation
+
+### Components
+```typescript
+// counter.tsx
+import { component$, useStore } from '@builder.io/qwik';
+
+export const Counter = component$(() => {
+  const store = useStore({ count: 0 });
+  
+  return (
+    <div>
+      <span>Count: {store.count}</span>
+      <button onClick$={() => store.count++}>
+        +
+      </button>
+    </div>
+  );
+});
+```
+
+### Lazy Boundaries
+```typescript
+// The $ suffix creates lazy boundaries
+// Code split at these points
+
+onClick$={() => store.count++}  // Split here
+useTask$(() => { ... })          // Split here  
+useVisible$(() => { ... })       // Split when visible
+useClientEffect$(() => { ... })  // Split, run on client
+```
+
+### State Management
+```typescript
+// useStore - Reactive state (serialized)
+const store = useStore({ count: 0 });
+
+// useSignal - Primitive values (serialized)
+const count = useSignal(0);
+
+// useContext - Shared state (serialized)
+const theme = useContext(ThemeContext);
+
+// useResource$ - Async data (resumable)
+const userData = useResource$(async () => {
+  return await fetchUser();
+});
+```
+
+## Performance Comparison
+
+### Bundle Sizes
+```
+Traditional SPA:
+- Initial JS: 500KB
+- Hydration: 200ms
+- TTI: 3s
+
+Qwik:
+- Initial HTML: 50KB
+- Initial JS: 1KB (framework)
+- First interaction: Load 2KB handler
+- TTI: <100ms
+```
+
+### Progressive Loading
+```
+User visits page:
+├─ HTML loads (50KB)
+├─ Page is interactive immediately (no hydration)
+├─ User clicks button
+├─ Download 2KB handler
+├─ Execute handler (deserialize state, update DOM)
+└─ Done!
+
+Only load what's needed, when needed
+```
+
+## Resumability vs Islands
+
+### Islands Architecture
+```javascript
+// Static HTML with hydrated islands
+<article>
+  Static content (no JS)
+  <Island client:load>
+    Interactive part (hydrated)
+  </Island>
+</article>
+
+// Each island hydrates independently
+// Still requires hydration for interactive parts
+```
+
+### Resumability
+```javascript
+// Everything can be interactive
+// No hydration needed
+<article>
+  <div onClick$={handler}>  <!-- Lazy loaded on click -->
+    Click me
+  </div>
+</article>
+
+// State preserved from server
+// Listeners attached via deserialization
+// Code loaded on demand
+```
+
+## Use Cases
+
+### E-commerce
+```typescript
+// Product page loads instantly
+// All interactive elements work immediately
+// Add to cart: 2KB download
+// Update quantity: 1KB download
+// Complex interactions loaded progressively
+
+export const ProductPage = component$(() => {
+  const cart = useStore({ items: [] });
+  
+  return (
+    <div>
+      <ProductDetails />
+      <AddToCartButton onAdd$={(product) => {
+        cart.items.push(product);
+      }} />
+      <Reviews />
+    </div>
+  );
+});
+```
+
+### Content Sites
+```typescript
+// Perfect for blogs, docs, marketing sites
+// Instant load, progressive enhancement
+// Search, filters, comments lazy loaded
+
+export const BlogPost = component$(() => {
+  return (
+    <article>
+      <Markdown content={post.content} />
+      <LazySearch client:visible />
+      <Comments client:idle postId={post.id} />
+    </article>
+  );
+});
+```
+
+## Trade-offs
+
+### Benefits
+- Zero hydration overhead
+- Instant interactivity
+- Minimal initial JS
+- Optimal caching (each symbol cached independently)
+- Progressive loading
+
+### Limitations
+- New paradigm (learning curve)
+- Ecosystem smaller than React/Vue
+- Requires Qwik-specific patterns
+- Not ideal for highly dynamic SPAs
+
+<KeyTakeaway>
+Resumability eliminates hydration by serializing application state in HTML and lazy-loading code on demand. It provides instant interactivity with minimal JavaScript, making it ideal for content sites and e-commerce. While the paradigm differs from traditional frameworks, it solves the fundamental hydration performance problem.
+</KeyTakeaway>

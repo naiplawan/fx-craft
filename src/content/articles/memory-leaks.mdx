@@ -1,19 +1,291 @@
 ---
 title: "Memory Leaks"
 slug: "memory-leaks"
-subtitle: "Deep dive into memory leaks"
+subtitle: "Identify and prevent memory leaks in JavaScript"
 category: "performance"
 icon: "trash-2"
-description: "Understanding memory leaks and its applications in modern web development"
+description: "Common causes of memory leaks and techniques to prevent them in JavaScript applications"
 difficulty: "advanced"
-tags: ["performance","memory","debugging"]
-related: []
-resources: []
-status: "stub"
+tags: ["performance","memory","debugging","profiling"]
+related: ["event-loop","closures","web-workers"]
+resources:
+  - title: "MDN - Memory Management"
+    url: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Memory_Management"
+  - title: "Google DevTools - Memory"
+    url: "https://developer.chrome.com/docs/devtools/memory/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Memory Leaks is a concept in frontend engineering. This article is currently being written.
+Memory leaks occur when a program continues to hold references to memory that is no longer needed. In JavaScript, this prevents the garbage collector from reclaiming memory, leading to increased memory usage, degraded performance, and eventually application crashes.
 </DefinitionBlock>
 
-<StubNotice />
+## Common Causes
+
+### 1. Accidental Global Variables
+```javascript
+// ❌ Global leak
+function process() {
+  name = 'John'; // Implicit global - no var/let/const
+  this.value = 123; // Global in non-strict mode
+}
+
+// ✅ Proper declaration
+function process() {
+  const name = 'John';
+  const value = 123;
+}
+```
+
+### 2. Forgotten Timers
+```javascript
+// ❌ Timer keeps referencing data
+function setupTimer(data) {
+  setInterval(() => {
+    console.log(data);
+  }, 1000);
+  // Never cleared - data leaked
+}
+
+// ✅ Clean up timers
+function setupTimer(data) {
+  const timerId = setInterval(() => {
+    console.log(data);
+  }, 1000);
+  
+  return () => clearInterval(timerId);
+}
+
+// In React
+useEffect(() => {
+  const timer = setInterval(...);
+  return () => clearInterval(timer); // Cleanup
+}, []);
+```
+
+### 3. Event Listeners
+```javascript
+// ❌ Listener not removed
+element.addEventListener('click', handleClick);
+// If element removed, handleClick still referenced
+
+// ✅ Remove listeners
+element.addEventListener('click', handleClick);
+
+// Later
+element.removeEventListener('click', handleClick);
+
+// Or use once option
+element.addEventListener('click', handleClick, { once: true });
+```
+
+### 4. Closures
+```javascript
+// ❌ Closure keeps large array in memory
+function processData() {
+  const hugeArray = new Array(1000000).fill('data');
+  
+  return function() {
+    console.log('Processing');
+    // hugeArray kept in memory even if not used
+  };
+}
+
+// ✅ Minimize closure scope
+function processData() {
+  const hugeArray = new Array(1000000).fill('data');
+  const result = process(hugeArray);
+  
+  return function() {
+    console.log(result); // Only result kept
+  };
+}
+```
+
+### 5. DOM References
+```javascript
+// ❌ Detached DOM nodes
+function removeElement() {
+  const element = document.getElementById('myElement');
+  element.remove();
+  // But reference still exists
+  window.savedElement = element; // Leaked!
+}
+
+// ✅ Clean references
+function removeElement() {
+  const element = document.getElementById('myElement');
+  element.remove();
+  // No references kept
+}
+
+// In React - don't store DOM refs unnecessarily
+const ref = useRef();
+// ref.current keeps DOM node
+// Set to null on unmount
+```
+
+### 6. Subscription Patterns
+```javascript
+// ❌ Observer not unsubscribed
+class EventEmitter {
+  constructor() {
+    this.listeners = [];
+  }
+  
+  subscribe(listener) {
+    this.listeners.push(listener);
+    // No unsubscribe method!
+  }
+}
+
+// ✅ Proper unsubscribe
+class EventEmitter {
+  subscribe(listener) {
+    this.listeners.push(listener);
+    
+    return () => {
+      const index = this.listeners.indexOf(listener);
+      if (index > -1) {
+        this.listeners.splice(index, 1);
+      }
+    };
+  }
+}
+
+// Usage
+const unsubscribe = emitter.subscribe(handler);
+// Later
+unsubscribe(); // Clean up
+```
+
+## Detection
+
+### Chrome DevTools
+```
+1. Performance tab > Record
+2. Look for continuously increasing JS Heap
+3. Memory tab > Heap snapshots
+4. Compare snapshots before/after suspected leak
+5. Look for:
+   - Detached DOM nodes
+   - Increasing array/object counts
+   - Retainers showing what's holding memory
+```
+
+### Performance Monitor
+```javascript
+// Check memory usage
+console.log('Memory used:', 
+  performance.memory.usedJSHeapSize / 1048576, 
+  'MB'
+);
+
+// Monitor over time
+setInterval(() => {
+  console.log('Heap:', performance.memory.usedJSHeapSize);
+}, 5000);
+```
+
+### WeakMap/WeakSet
+```javascript
+// ✅ Use WeakMap for private data
+const privateData = new WeakMap();
+
+class MyClass {
+  constructor(data) {
+    privateData.set(this, data);
+    // Data automatically cleaned when instance garbage collected
+  }
+}
+
+// ❌ Regular Map keeps reference
+const cache = new Map();
+cache.set(key, largeObject);
+// Must manually delete
+```
+
+## Prevention Patterns
+
+### Cleanup in Components
+```javascript
+// React cleanup pattern
+function MyComponent() {
+  useEffect(() => {
+    const controller = new AbortController();
+    
+    fetch('/api/data', { signal: controller.signal })
+      .then(response => response.json())
+      .then(data => setData(data));
+    
+    const handleResize = () => {
+      // Update state
+    };
+    
+    window.addEventListener('resize', handleResize);
+    const timer = setInterval(poll, 5000);
+    
+    // Cleanup everything
+    return () => {
+      controller.abort();
+      window.removeEventListener('resize', handleResize);
+      clearInterval(timer);
+    };
+  }, []);
+}
+```
+
+### WeakRef (Advanced)
+```javascript
+// WeakRef allows object to be garbage collected
+const ref = new WeakRef(largeObject);
+
+// Later
+const obj = ref.deref();
+if (obj) {
+  // Object still exists
+  obj.doSomething();
+} else {
+  // Object was garbage collected
+}
+
+// Use with FinalizationRegistry
+const registry = new FinalizationRegistry(key => {
+  console.log(`Object ${key} was garbage collected`);
+});
+
+registry.register(obj, 'myObject');
+```
+
+## Debugging Example
+
+```javascript
+// Suspected leak
+class LeakyComponent {
+  constructor() {
+    this.data = new Array(1000000);
+    
+    window.addEventListener('scroll', this.handleScroll);
+    // Missing: removeEventListener
+  }
+}
+
+// Fixed version
+class FixedComponent {
+  constructor() {
+    this.data = new Array(1000000);
+    this.handleScroll = this.handleScroll.bind(this);
+    
+    window.addEventListener('scroll', this.handleScroll);
+  }
+  
+  destroy() {
+    window.removeEventListener('scroll', this.handleScroll);
+    this.data = null; // Help GC
+  }
+}
+```
+
+<KeyTakeaway>
+Prevent memory leaks by cleaning up timers, event listeners, and subscriptions when components unmount. Avoid storing large objects in closures unnecessarily. Use WeakMap/WeakSet for caches that should follow object lifetime. Profile memory usage in Chrome DevTools to identify leaks early.
+</KeyTakeaway>

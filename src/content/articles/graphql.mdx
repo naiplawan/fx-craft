@@ -1,19 +1,289 @@
 ---
 title: "GraphQL"
 slug: "graphql"
-subtitle: "Deep dive into graphql"
+subtitle: "A query language for your API"
 category: "networking"
 icon: "share"
-description: "Understanding graphql and its applications in modern web development"
+description: "Learn GraphQL for efficient data fetching, type safety, and flexible queries that reduce over-fetching"
 difficulty: "intermediate"
-tags: ["api","query","data"]
-related: []
-resources: []
-status: "stub"
+tags: ["api","query","data","networking"]
+related: ["rest-api","promises","async-await"]
+resources:
+  - title: "GraphQL.org"
+    url: "https://graphql.org/"
+  - title: "Apollo Client Docs"
+    url: "https://www.apollographql.com/docs/react/"
+status: "published"
 ---
 
 <DefinitionBlock>
-GraphQL is a concept in frontend engineering. This article is currently being written.
+GraphQL is a query language for APIs that allows clients to request exactly the data they need. Unlike REST where the server defines the response structure, GraphQL lets the client specify the shape of the response, eliminating over-fetching and under-fetching.
 </DefinitionBlock>
 
-<StubNotice />
+## GraphQL vs REST
+
+```javascript
+// REST: Multiple endpoints, fixed responses
+GET /users/1
+GET /users/1/posts
+GET /users/1/friends
+
+// GraphQL: Single endpoint, flexible queries
+POST /graphql
+{
+  user(id: 1) {
+    name
+    posts { title }
+    friends { name }
+  }
+}
+```
+
+## Basic Concepts
+
+### Queries
+```javascript
+// Request specific fields
+const GET_USER = `
+  query GetUser($id: ID!) {
+    user(id: $id) {
+      id
+      name
+      email
+      posts {
+        title
+        publishedAt
+      }
+    }
+  }
+`;
+
+// Execute query
+fetch('/graphql', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    query: GET_USER,
+    variables: { id: '1' }
+  })
+});
+```
+
+### Mutations
+```javascript
+// Create, update, delete operations
+const CREATE_POST = `
+  mutation CreatePost($input: CreatePostInput!) {
+    createPost(input: $input) {
+      id
+      title
+      content
+    }
+  }
+`;
+
+fetch('/graphql', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    query: CREATE_POST,
+    variables: {
+      input: {
+        title: 'My Post',
+        content: 'Hello World'
+      }
+    }
+  })
+});
+```
+
+## Client Libraries
+
+### Apollo Client
+```javascript
+import { ApolloClient, InMemoryCache, gql } from '@apollo/client';
+
+const client = new ApolloClient({
+  uri: 'https://api.example.com/graphql',
+  cache: new InMemoryCache()
+});
+
+// Simple query
+client.query({
+  query: gql`
+    query GetUsers {
+      users {
+        id
+        name
+      }
+    }
+  `
+}).then(result => console.log(result.data));
+
+// React hook
+import { useQuery, useMutation } from '@apollo/client';
+
+function UserList() {
+  const { loading, error, data } = useQuery(gql`
+    query GetUsers {
+      users {
+        id
+        name
+      }
+    }
+  `);
+  
+  if (loading) return <p>Loading...</p>;
+  if (error) return <p>Error: {error.message}</p>;
+  
+  return (
+    <ul>
+      {data.users.map(user => (
+        <li key={user.id}>{user.name}</li>
+      ))}
+    </ul>
+  );
+}
+```
+
+### Relay
+```javascript
+// Facebook's GraphQL client
+import { graphql, useFragment } from 'react-relay';
+
+const UserComponent = ({ user }) => {
+  const data = useFragment(
+    graphql`
+      fragment UserComponent_user on User {
+        name
+        email
+      }
+    `,
+    user
+  );
+  
+  return <div>{data.name}</div>;
+};
+```
+
+## Advanced Features
+
+### Fragments
+```javascript
+// Reusable field selections
+const UserFields = gql`
+  fragment UserFields on User {
+    id
+    name
+    email
+    avatar
+  }
+`;
+
+const GET_USER_WITH_POSTS = gql`
+  ${UserFields}
+  
+  query GetUser($id: ID!) {
+    user(id: $id) {
+      ...UserFields
+      posts {
+        title
+      }
+    }
+  }
+`;
+```
+
+### Subscriptions
+```javascript
+// Real-time updates
+const COMMENTS_SUBSCRIPTION = gql`
+  subscription OnCommentAdded($postId: ID!) {
+    commentAdded(postId: $postId) {
+      id
+      content
+      author {
+        name
+      }
+    }
+  }
+`;
+
+function Comments({ postId }) {
+  const { data } = useSubscription(COMMENTS_SUBSCRIPTION, {
+    variables: { postId }
+  });
+  
+  return (
+    <div>
+      {data?.commentAdded && (
+        <div>New comment: {data.commentAdded.content}</div>
+      )}
+    </div>
+  );
+}
+```
+
+### Error Handling
+```javascript
+const { loading, error, data } = useQuery(GET_USER, {
+  errorPolicy: 'all' // Return partial data with errors
+});
+
+if (error) {
+  return (
+    <div>
+      {error.graphQLErrors.map(({ message }, i) => (
+        <span key={i}>{message}</span>
+      ))}
+    </div>
+  );
+}
+```
+
+## Best Practices
+
+### Caching
+```javascript
+const client = new ApolloClient({
+  cache: new InMemoryCache({
+    typePolicies: {
+      Query: {
+        fields: {
+          users: {
+            // Merge cached results
+            merge(existing, incoming) {
+              return incoming;
+            }
+          }
+        }
+      }
+    }
+  })
+});
+```
+
+### Optimistic UI
+```javascript
+const [addTodo] = useMutation(ADD_TODO, {
+  optimisticResponse: {
+    addTodo: {
+      id: 'temp-id',
+      text: newTodoText,
+      completed: false,
+      __typename: 'Todo'
+    }
+  },
+  update(cache, { data: { addTodo } }) {
+    const { todos } = cache.readQuery({ query: GET_TODOS });
+    cache.writeQuery({
+      query: GET_TODOS,
+      data: { todos: [...todos, addTodo] }
+    });
+  }
+});
+```
+
+<KeyTakeaway>
+GraphQL provides precise data fetching through a single endpoint. Use Apollo Client or Relay for production apps, leverage fragments for reusability, and implement optimistic UI for better perceived performance. The strong typing enables better tooling and fewer runtime errors.
+</KeyTakeaway>

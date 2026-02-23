@@ -1,19 +1,344 @@
 ---
 title: "Keyboard Navigation"
 slug: "keyboard-navigation"
-subtitle: "Deep dive into keyboard navigation"
+subtitle: "Navigate web interfaces without a mouse"
 category: "accessibility"
 icon: "keyboard"
-description: "Understanding keyboard navigation and its applications in modern web development"
+description: "Ensure all interactive elements are accessible via keyboard for users who cannot use a mouse"
 difficulty: "intermediate"
-tags: ["a11y","keyboard","navigation"]
-related: []
-resources: []
-status: "stub"
+tags: ["a11y","keyboard","navigation","wcag"]
+related: ["focus-management","aria","screen-readers"]
+resources:
+  - title: "W3C Keyboard Accessibility"
+    url: "https://www.w3.org/WAI/perspective-videos/keyboard/"
+  - title: "WebAIM - Keyboard Accessibility"
+    url: "https://webaim.org/articles/keyboard/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Keyboard Navigation is a concept in frontend engineering. This article is currently being written.
+Keyboard navigation allows users to interact with web content using only a keyboard. This is essential for users with motor disabilities, visual impairments, or those who simply prefer keyboard input. All functionality must be available via keyboard to meet WCAG accessibility requirements.
 </DefinitionBlock>
 
-<StubNotice />
+## Essential Keyboard Interactions
+
+### Basic Navigation
+```
+Tab          - Move forward through focusable elements
+Shift + Tab  - Move backward
+Enter/Space  - Activate buttons and links
+Arrow Keys   - Navigate within widgets (menus, tabs, etc.)
+Escape       - Close modals, menus, or cancel
+Home/End     - Go to start/end of list
+Page Up/Down - Scroll page
+```
+
+### Interactive Elements
+```html
+<!-- All these work with keyboard by default -->
+<a href="/">Link (Tab + Enter)</a>
+<button>Button (Tab + Space/Enter)</button>
+<input type="text" /> (Tab + type)>
+<select> (Tab + Arrow keys + Enter)>
+<textarea></textarea> (Tab + type)>
+```
+
+## Keyboard-Only Testing
+
+### Manual Testing Checklist
+```javascript
+// Test these interactions:
+
+// 1. Tab Navigation
+// - Can you reach all interactive elements?
+// - Is the tab order logical?
+// - Can you see focus indicator?
+
+// 2. Form Completion
+// - Tab through form fields
+// - Fill out without touching mouse
+// - Submit form
+
+// 3. Modal Dialogs
+// - Open with keyboard
+// - Trap focus inside
+// - Close with Escape
+// - Return focus to trigger
+
+// 4. Dropdown Menus
+// - Open with Enter/Space/Arrow
+// - Navigate with arrows
+// - Select with Enter
+// - Close with Escape
+```
+
+### Automated Testing
+```javascript
+// Cypress keyboard testing
+cy.get('button').type('{enter}');
+cy.get('input').type('Hello World');
+cy.get('input').type('{esc}');
+
+// Playwright
+test('keyboard navigation', async ({ page }) => {
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.modal')).toBeVisible();
+});
+
+// axe-core includes keyboard checks
+const results = await axe.run();
+```
+
+## Common Patterns
+
+### Skip Links
+```html
+<!-- First focusable element on page -->
+<a href="#main-content" class="skip-link">
+  Skip to main content
+</a>
+
+<nav>...navigation...</nav>
+
+<main id="main-content" tabindex="-1">
+  <!-- Main content here -->
+</main>
+
+<style>
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: #000;
+  color: #fff;
+  padding: 8px;
+  z-index: 100;
+}
+
+.skip-link:focus {
+  top: 0;
+}
+</style>
+```
+
+### Accessible Dropdown
+```html
+<button aria-expanded="false" aria-haspopup="listbox">
+  Select Option
+  <span aria-hidden="true">▼</span>
+</button>
+<ul role="listbox" hidden>
+  <li role="option" tabindex="-1">Option 1</li>
+  <li role="option" tabindex="-1">Option 2</li>
+  <li role="option" tabindex="-1">Option 3</li>
+</ul>
+
+<script>
+button.addEventListener('keydown', (e) => {
+  switch(e.key) {
+    case 'Enter':
+    case ' ':
+      e.preventDefault();
+      toggleMenu();
+      break;
+    case 'ArrowDown':
+      e.preventDefault();
+      openMenu();
+      focusFirstItem();
+      break;
+    case 'Escape':
+      closeMenu();
+      button.focus();
+      break;
+  }
+});
+
+list.addEventListener('keydown', (e) => {
+  switch(e.key) {
+    case 'ArrowDown':
+      e.preventDefault();
+      focusNextItem();
+      break;
+    case 'ArrowUp':
+      e.preventDefault();
+      focusPreviousItem();
+      break;
+    case 'Enter':
+      selectItem();
+      closeMenu();
+      button.focus();
+      break;
+    case 'Escape':
+      closeMenu();
+      button.focus();
+      break;
+  }
+});
+</script>
+```
+
+### Tabs Component
+```html
+<div class="tabs">
+  <div role="tablist" aria-label="Settings">
+    <button role="tab" 
+            aria-selected="true" 
+            aria-controls="panel-1"
+            id="tab-1"
+            tabindex="0">
+      General
+    </button>
+    <button role="tab" 
+            aria-selected="false" 
+            aria-controls="panel-2"
+            id="tab-2"
+            tabindex="-1">
+      Privacy
+    </button>
+  </div>
+  
+  <div role="tabpanel" id="panel-1" aria-labelledby="tab-1">...</div>
+  <div role="tabpanel" id="panel-2" aria-labelledby="tab-2" hidden>...</div>
+</div>
+
+<script>
+// Arrow keys move between tabs
+// Tab moves to tabpanel content
+// Only active tab is in tab order
+</script>
+```
+
+## Focus Order
+
+### Logical Tab Order
+```html
+<!-- Good: Natural DOM order matches visual order -->
+<form>
+  <label>Name <input /></label>
+  <label>Email <input /></label>
+  <label>Phone <input /></label>
+  <button>Submit</button>
+</form>
+
+<!-- Bad: tabindex disrupts natural order -->
+<form>
+  <input tabindex="3" />
+  <input tabindex="1" />
+  <input tabindex="2" />
+</form>
+```
+
+### Focusable Elements
+```html
+<!-- Always focusable -->
+<a href="..."></a>
+<button></button>
+<input />
+<select></select>
+<textarea></textarea>
+<iframe></iframe>
+
+<!-- Focusable with tabindex -->
+<div tabindex="0">Custom widget</div>
+
+<!-- Programmatically focusable only -->
+<div tabindex="-1" id="error-summary"></div>
+
+<!-- Never use positive tabindex -->
+<div tabindex="5">❌ Don't do this</div>
+```
+
+## Best Practices
+
+### Visible Focus Indicators
+```css
+/* ❌ Never remove focus outline without replacement */
+*:focus {
+  outline: none;
+}
+
+/* ✅ Visible focus indicator */
+*:focus {
+  outline: 2px solid #005fcc;
+  outline-offset: 2px;
+}
+
+/* ✅ Modern approach - only when keyboard focused */
+*:focus-visible {
+  outline: 2px solid #005fcc;
+  outline-offset: 2px;
+}
+
+/* Don't show on click */
+*:focus:not(:focus-visible) {
+  outline: none;
+}
+```
+
+### No Keyboard Traps
+```javascript
+// Bad: User gets stuck
+modal.addEventListener('keydown', (e) => {
+  // No escape handling - trap!
+});
+
+// Good: Always provide exit
+modal.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeModal();
+    triggerButton.focus();
+  }
+});
+```
+
+### Focus Restoration
+```javascript
+// Save and restore focus
+function openModal() {
+  lastFocusedElement = document.activeElement;
+  modal.show();
+  modal.querySelector('button').focus();
+}
+
+function closeModal() {
+  modal.hide();
+  lastFocusedElement?.focus();
+}
+```
+
+## Testing Tools
+
+### Browser DevTools
+```javascript
+// Visualize tab order in Chrome DevTools
+// Rendering tab > Show tab order
+
+// Test with keyboard
+// - Unplug mouse
+// - Tab through entire page
+// - Use all features
+```
+
+### Screen Reader Shortcuts
+```
+NVDA:
+- Tab: Next focusable
+- Shift+Tab: Previous
+- NVDA+Space: Activate
+- Esc: Exit mode
+
+JAWS:
+- Tab: Next
+- Enter: Activate
+- JAWS+Z: Virtual cursor
+
+VoiceOver (Mac):
+- Tab: Next
+- VO+Space: Activate
+- VO+Shift+Down: Interact
+```
+
+<KeyTakeaway>
+Keyboard navigation is essential for accessibility. Ensure all interactive elements are reachable via Tab, provide logical focus order, show visible focus indicators, and never trap keyboard users. Test by unplugging your mouse and using only keyboard to navigate your entire application.
+</KeyTakeaway>

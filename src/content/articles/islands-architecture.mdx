@@ -1,19 +1,331 @@
 ---
 title: "Islands Architecture"
 slug: "islands-architecture"
-subtitle: "Deep dive into islands architecture"
+subtitle: "Interactive components in a sea of static HTML"
 category: "rendering"
 icon: "layout-template"
-description: "Understanding islands architecture and its applications in modern web development"
+description: "Architecture pattern that renders pages as static HTML with interactive components hydrated independently"
 difficulty: "intermediate"
-tags: ["hydration","astro","performance"]
-related: []
-resources: []
-status: "stub"
+tags: ["hydration","astro","performance","architecture"]
+related: ["partial-hydration","hydration","server-components"]
+resources:
+  - title: "Islands Architecture"
+    url: "https://jasonformat.com/islands-architecture/"
+  - title: "Astro Islands"
+    url: "https://docs.astro.build/en/concepts/islands/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Islands Architecture is a concept in frontend engineering. This article is currently being written.
+Islands Architecture is a web development pattern where interactive UI components (islands) are hydrated independently within a sea of static, non-interactive server-rendered HTML. Each island hydrates in isolation, reducing JavaScript overhead while maintaining interactivity where needed.
 </DefinitionBlock>
 
-<StubNotice />
+## The Concept
+
+```
+Traditional SPA:                    Islands Architecture:
+┌─────────────────────────┐         ┌─────────────────────────┐
+│ ┌─────────────────────┐ │         │ ┌─────────────────────┐ │
+│ │                     │ │         │ │    🏝️ Island 1      │ │
+│ │    JavaScript       │ │         │ │    (Interactive)    │ │
+│ │    Everywhere       │ │         │ └─────────────────────┘ │
+│ │                     │ │         │                         │
+│ │                     │ │         │    Static HTML          │
+│ │                     │ │         │    (No JS)              │
+│ │                     │ │         │                         │
+│ └─────────────────────┘ │         │ ┌─────────────────────┐ │
+└─────────────────────────┘         │ │    🏝️ Island 2      │ │
+                                    │ │    (Interactive)    │ │
+                                    │ └─────────────────────┘ │
+                                    │                         │
+                                    │    Static HTML          │
+                                    │                         │
+                                    │ ┌─────────────────────┐ │
+                                    │ │    🏝️ Island 3      │ │
+                                    │ │    (Interactive)    │ │
+                                    │ └─────────────────────┘ │
+                                    └─────────────────────────┘
+```
+
+## How It Works
+
+### 1. Server Rendering
+```astro
+---
+// Astro example
+// This runs on server only
+const data = await fetch('https://api.example.com/posts');
+---
+
+<!-- Static HTML, no JavaScript -->
+<header>
+  <h1>My Blog</h1>
+  <nav>...navigation...</nav>
+</header>
+
+<main>
+  <!-- List of posts - static -->
+  {data.posts.map(post => (
+    <article>
+      <h2>{post.title}</h2>
+      <p>{post.excerpt}</p>
+    </article>
+  ))}
+  
+  <!-- Interactive island -->
+  <SearchWidget client:load />
+</main>
+
+<!-- Static footer -->
+<footer>© 2024</footer>
+```
+
+### 2. Island Hydration
+```javascript
+// Each island hydrates independently
+// With its own JavaScript bundle
+
+<script type="module">
+  // Only loads for SearchWidget
+  import { hydrate } from 'framework';
+  import SearchWidget from './SearchWidget.js';
+  
+  hydrate(SearchWidget, document.querySelector('[data-island="search"]'));
+</script>
+```
+
+## Frameworks Supporting Islands
+
+### Astro
+```astro
+---
+// Server-side only
+const posts = await Astro.glob('./posts/*.md');
+---
+
+<layout>
+  <!-- Static -->
+  <h1>{posts.length} Posts</h1>
+  
+  <!-- Islands with different hydration strategies -->
+  <Counter client:load />           <!-- Immediate -->
+  <Comments client:idle />         <!-- When browser idle -->
+  <ImageGallery client:visible /> <!-- When scrolled into view -->
+  <ThemeToggle client:media="(max-width: 768px)" />
+</layout>
+```
+
+### 11ty + Preact
+```javascript
+// .eleventy.js
+const preactRenderToString = require('preact-render-to-string');
+
+module.exports = function(eleventyConfig) {
+  eleventyConfig.addShortcode('island', (component, props) => {
+    // Render on server
+    const html = preactRenderToString(h(component, props));
+    
+    // Mark for client hydration
+    return `<div data-island="${component.name}" props='${JSON.stringify(props)}'>
+      ${html}
+    </div>`;
+  });
+};
+```
+
+### Fresh (Deno)
+```tsx
+// routes/index.tsx
+import { Handlers, PageProps } from "$fresh/server.ts";
+import Counter from "../islands/Counter.tsx";
+
+export const handler: Handlers = {
+  async GET(req, ctx) {
+    const data = await fetchData();
+    return ctx.render(data);
+  },
+};
+
+export default function Page({ data }: PageProps) {
+  return (
+    <div>
+      <!-- Static -->
+      <h1>{data.title}</h1>
+      <p>{data.content}</p>
+      
+      <!-- Island -->
+      <Counter start={data.count} />
+    </div>
+  );
+}
+```
+
+## Hydration Strategies
+
+### client:load
+```astro
+<!-- Hydrate immediately on page load -->
+<ShoppingCart client:load />
+```
+
+### client:idle
+```astro
+<!-- Hydrate when browser is idle -->
+<SocialShare client:idle />
+```
+
+### client:visible
+```astro
+<!-- Hydrate when scrolled into viewport -->
+<ImageCarousel client:visible />
+```
+
+### client:media
+```astro
+<!-- Hydrate based on media query -->
+<MobileMenu client:media="(max-width: 768px)" />
+```
+
+### client:only
+```astro
+<!-- Skip SSR, render only on client -->
+<HeavyChart client:only="react" />
+```
+
+## Benefits
+
+### 1. Zero JavaScript by Default
+```
+Page: Blog post
+Static HTML: 15KB
+Islands: 2 (Search, Comments)
+Island JS: 8KB
+Total JS: 8KB vs 150KB (traditional SPA)
+```
+
+### 2. Independent Hydration
+```javascript
+// Each island hydrates separately
+// Failure in one doesn't break others
+
+<!-- Even if Search fails -->
+<SearchIsland />
+
+<!-- Comments still work -->
+<CommentsIsland />
+```
+
+### 3. Progressive Enhancement
+```astro
+<!-- Works without JavaScript -->
+<form action="/search" method="GET">
+  <input type="search" name="q" />
+  <button type="submit">Search</button>
+</form>
+
+<!-- Enhanced with JavaScript -->
+<SearchIsland client:load>
+  <!-- Falls back to form above -->
+</SearchIsland>
+```
+
+## Use Cases
+
+### Content Sites
+```astro
+---
+// Blog, documentation, marketing
+const articles = await getArticles();
+---
+
+<article>
+  <!-- Static content -->
+  <h1>{article.title}</h1>
+  <div class="content">
+    <Fragment set:html={article.content} />
+  </div>
+  
+  <!-- Interactive islands -->
+  <div class="engagement">
+    <LikeButton client:load articleId={article.id} />
+    <ShareMenu client:load />
+  </div>
+  
+  <CommentsSection 
+    client:visible 
+    articleId={article.id} 
+  />
+</article>
+```
+
+### E-commerce
+```astro
+---
+const product = await getProduct(params.id);
+---
+
+<div class="product">
+  <!-- Static -->
+  <img src={product.image} alt={product.name} />
+  <h1>{product.name}</h1>
+  <p>{product.description}</p>
+  
+  <!-- Interactive -->
+  <AddToCart 
+    client:load 
+    product={product} 
+  />
+  
+  <ColorPicker 
+    client:load 
+    colors={product.colors} 
+  />
+  
+  <Reviews 
+    client:visible 
+    productId={product.id} 
+  />
+</div>
+```
+
+## Best Practices
+
+### 1. Keep Islands Small
+```astro
+<!-- Good: Focused island -->
+<LikeButton client:load />
+
+<!-- Bad: Too much in one island -->
+<WholePage client:load />
+```
+
+### 2. Choose Right Hydration
+```astro
+<!-- Above fold, critical -->
+<Navigation client:load />
+
+<!-- Below fold, can wait -->
+<FooterComments client:visible />
+
+<!-- Enhancement, not critical -->
+<Confetti client:idle />
+```
+
+### 3. Lazy Load Islands
+```astro
+<script>
+  // Load island only when needed
+  let islandLoaded = false;
+  
+  document.getElementById('load-chart').addEventListener('click', async () => {
+    if (!islandLoaded) {
+      await import('./ChartIsland.js');
+      islandLoaded = true;
+    }
+  });
+</script>
+```
+
+<KeyTakeaway>
+Islands Architecture delivers the performance of static sites with the interactivity of SPAs. Static by default, interactive on demand. Each island hydrates independently with optimal timing. Perfect for content-heavy sites where most of the page doesn't need JavaScript.
+</KeyTakeaway>

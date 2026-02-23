@@ -1,19 +1,182 @@
 ---
 title: "XSS Prevention"
 slug: "xss"
-subtitle: "Deep dive into xss prevention"
+subtitle: "Protect your application from cross-site scripting attacks"
 category: "security"
 icon: "alert-triangle"
-description: "Understanding xss prevention and its applications in modern web development"
+description: "Learn to identify and prevent XSS vulnerabilities including reflected, stored, and DOM-based attacks"
 difficulty: "intermediate"
-tags: ["security","xss","sanitization"]
-related: []
-resources: []
-status: "stub"
+tags: ["security","xss","sanitization","csp"]
+related: ["csp","csrf","https"]
+resources:
+  - title: "OWASP XSS Prevention Cheat Sheet"
+    url: "https://cheatsheetseries.owasp.org/cheatsheets/Cross_Site_Scripting_Prevention_Cheat_Sheet.html"
+  - title: "MDN - Cross-site scripting"
+    url: "https://developer.mozilla.org/en-US/docs/Web/Security/Types_of_attacks#cross-site_scripting_xss"
+status: "published"
 ---
 
 <DefinitionBlock>
-XSS Prevention is a concept in frontend engineering. This article is currently being written.
+Cross-Site Scripting (XSS) is a security vulnerability that allows attackers to inject malicious scripts into web pages viewed by other users. XSS attacks can steal session cookies, impersonate users, or perform unwanted actions on their behalf.
 </DefinitionBlock>
 
-<StubNotice />
+## Types of XSS
+
+### Reflected XSS
+```javascript
+// Vulnerable code
+const searchTerm = new URLSearchParams(window.location.search).get('q');
+document.write(`<h1>Results for: ${searchTerm}</h1>`);
+
+// Attack URL: ?q=<script>stealCookies()</script>
+```
+
+### Stored XSS
+```javascript
+// Vulnerable comment system
+function displayComment(comment) {
+  // User input saved to database and displayed to all users
+  document.getElementById('comments').innerHTML += comment.text;
+}
+
+// Attacker posts: <img src=x onerror="stealData()">
+```
+
+### DOM-based XSS
+```javascript
+// Vulnerable hash-based routing
+window.addEventListener('hashchange', () => {
+  const hash = location.hash.slice(1);
+  document.getElementById('content').innerHTML = hash; // Dangerous!
+});
+
+// Attack: #<img src=x onerror=alert(document.cookie)>
+```
+
+## Prevention Techniques
+
+### 1. Output Encoding
+```javascript
+// HTML encoding
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+// Or use a library like DOMPurify
+import DOMPurify from 'dompurify';
+
+// Safe rendering
+const userInput = '<script>alert("xss")</script>';
+const safeHtml = escapeHtml(userInput); // &lt;script&gt;...
+
+document.getElementById('output').textContent = userInput; // Safe
+document.getElementById('output').innerHTML = safeHtml;     // Safe
+```
+
+### 2. Content Security Policy (CSP)
+```html
+<meta http-equiv="Content-Security-Policy" 
+      content="default-src 'self'; script-src 'self' 'nonce-abc123';">
+
+<script nonce="abc123">
+  // This script will execute
+</script>
+
+<script>
+  // This inline script will be blocked
+</script>
+```
+
+### 3. React/Vue/Angular Auto-Escaping
+```jsx
+// React automatically escapes
+function UserProfile({ user }) {
+  return <div>{user.name}</div>; // Safe - auto-escaped
+}
+
+// Dangerous - explicit HTML
+function Dangerous({ html }) {
+  return <div dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+// Safe with sanitization
+import DOMPurify from 'dompurify';
+
+function SafeHtml({ html }) {
+  const clean = DOMPurify.sanitize(html);
+  return <div dangerouslySetInnerHTML={{ __html: clean }} />;
+}
+```
+
+### 4. Input Validation
+```javascript
+// Whitelist approach
+function validateUsername(username) {
+  const regex = /^[a-zA-Z0-9_]{3,20}$/;
+  return regex.test(username);
+}
+
+// Sanitize URLs
+function sanitizeUrl(url) {
+  const allowedProtocols = ['http:', 'https:', 'mailto:'];
+  try {
+    const parsed = new URL(url);
+    return allowedProtocols.includes(parsed.protocol) ? url : '#';
+  } catch {
+    return '#';
+  }
+}
+```
+
+### 5. HTTP-only Cookies
+```javascript
+// Server-side: Set cookies as HTTP-only
+Set-Cookie: sessionId=abc123; HttpOnly; Secure; SameSite=Strict
+
+// JavaScript cannot access HTTP-only cookies
+document.cookie; // sessionId is not visible
+```
+
+## Best Practices
+
+### Avoid Dangerous APIs
+```javascript
+// Dangerous - avoid these
+element.innerHTML = userInput;
+document.write(userInput);
+eval(userInput);
+setTimeout(userInput);
+setInterval(userInput);
+new Function(userInput);
+location.href = userInput; // javascript: protocol
+
+// Safe alternatives
+element.textContent = userInput;
+element.innerText = userInput;
+document.createTextNode(userInput);
+```
+
+### URL Validation
+```javascript
+function isValidRedirect(url) {
+  try {
+    const parsed = new URL(url, window.location.origin);
+    // Only allow same-origin redirects
+    return parsed.origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+// Usage
+const returnUrl = new URLSearchParams(location.search).get('return');
+if (isValidRedirect(returnUrl)) {
+  location.href = returnUrl;
+}
+```
+
+<KeyTakeaway>
+Prevent XSS by encoding output, validating input, implementing CSP, and avoiding dangerous APIs like innerHTML with user data. Modern frameworks provide automatic escaping, but stay vigilant with dangerouslySetInnerHTML. Use HTTP-only cookies to protect session data even if XSS occurs.
+</KeyTakeaway>

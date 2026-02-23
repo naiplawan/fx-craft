@@ -23,25 +23,22 @@ export function RelatedTopics({ slugs, className }: RelatedTopicsProps) {
 
   return (
     <div className={cn("mt-12 pt-8 border-t border-gray-200 dark:border-gray-800", className)}>
-      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+      <h3 className="text-sm font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-4">
         Related Topics
       </h3>
-      <div className="grid gap-3">
+      <div className="grid gap-2">
         {relatedArticles.map((article) => (
           <Link
             key={article.slug}
             href={`/articles/${article.slug}`}
-            className="group flex items-center justify-between p-4 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 hover:border-[#088395] dark:hover:border-[#7AB2B2] transition-colors"
+            className="group flex items-center justify-between p-3 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800/50 transition-colors -ml-3"
           >
             <div>
-              <p className="font-medium text-gray-900 dark:text-gray-100 group-hover:text-[#088395] dark:group-hover:text-[#7AB2B2] transition-colors">
+              <p className="font-medium text-gray-900 dark:text-gray-100 group-hover:text-[#088395] dark:group-hover:text-[#7AB2B2] transition-colors text-sm">
                 {article.title}
               </p>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
-                {article.description}
-              </p>
             </div>
-            <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-[#088395] dark:group-hover:text-[#7AB2B2] transition-colors" />
+            <ArrowRight className="w-4 h-4 text-gray-300 dark:text-gray-600 group-hover:text-[#088395] dark:group-hover:text-[#7AB2B2] transition-colors" />
           </Link>
         ))}
       </div>

@@ -1,19 +1,376 @@
 ---
 title: "CQRS Pattern"
 slug: "cqrs"
-subtitle: "Deep dive into cqrs pattern"
+subtitle: "Separate read and write operations"
 category: "architecture"
 icon: "split"
-description: "Understanding cqrs pattern and its applications in modern web development"
+description: "Command Query Responsibility Segregation separates read and write models for optimized performance and scalability"
 difficulty: "advanced"
-tags: ["architecture","patterns","data"]
-related: []
-resources: []
-status: "stub"
+tags: ["architecture","patterns","data","ddd"]
+related: ["event-sourcing","ddd","micro-frontends"]
+resources:
+  - title: "CQRS by Martin Fowler"
+    url: "https://martinfowler.com/bliki/CQRS.html"
+  - title: "Microsoft CQRS Pattern"
+    url: "https://docs.microsoft.com/en-us/azure/architecture/patterns/cqrs"
+status: "published"
 ---
 
 <DefinitionBlock>
-CQRS Pattern is a concept in frontend engineering. This article is currently being written.
+CQRS (Command Query Responsibility Segregation) is an architectural pattern that separates read operations (queries) from write operations (commands). Instead of using the same model for both, CQRS uses separate models optimized for each purpose, enabling better performance, scalability, and security.
 </DefinitionBlock>
 
-<StubNotice />
+## Traditional vs CQRS
+
+### Traditional CRUD
+```javascript
+// Same model for everything
+class UserService {
+  // Read
+  async getUser(id) {
+    return await db.users.findById(id);
+  }
+  
+  // Write
+  async updateUser(id, data) {
+    return await db.users.update(id, data);
+  }
+  
+  // List with complex query
+  async searchUsers(filters) {
+    return await db.users.find({
+      where: buildComplexWhere(filters),
+      include: ['profile', 'posts', 'comments']
+    });
+  }
+}
+```
+
+### CQRS Approach
+```javascript
+// Write Model (Commands)
+class UserCommandService {
+  async createUser(command) {
+    const user = User.create(command);
+    await this.userRepository.save(user);
+    await this.eventBus.publish(new UserCreated(user.id));
+    return user.id;
+  }
+  
+  async updateEmail(command) {
+    const user = await this.userRepository.findById(command.userId);
+    user.changeEmail(command.email);
+    await this.userRepository.save(user);
+  }
+}
+
+// Read Model (Queries)
+class UserQueryService {
+  // Optimized for specific queries
+  async getUserById(id) {
+    return await this.readDb.users.findById(id);
+  }
+  
+  async searchUsers(criteria) {
+    // Denormalized, indexed for reads
+    return await this.readDb.userSearchView.find({
+      $text: { $search: criteria.query }
+    });
+  }
+  
+  async getUserDashboard(userId) {
+    // Pre-computed view
+    return await this.readDb.userDashboards.findOne({ userId });
+  }
+}
+```
+
+## When to Use CQRS
+
+### Good Candidates
+```
+✓ Complex domains with different read/write needs
+✓ High-read, low-write scenarios
+✓ Need for optimized query performance
+✓ Different teams working on reads vs writes
+✓ Event sourcing integration
+✓ Multi-model requirements
+```
+
+### Avoid When
+```
+✗ Simple CRUD applications
+✗ Small teams, simple domains
+✗ Tight coupling between reads and writes needed
+✗ Eventual consistency is unacceptable
+```
+
+## Implementation Patterns
+
+### Single Database
+```javascript
+// Same DB, different models
+// Simplest approach, good for starting
+
+// Command side
+class OrderCommandHandler {
+  async handle(command) {
+    const order = await this.orderRepo.findById(command.orderId);
+    order.confirm();
+    await this.orderRepo.save(order);
+  }
+}
+
+// Query side - use projections
+class OrderQueryHandler {
+  async getOrderSummary(orderId) {
+    // Project only needed fields
+    return await db.query(`
+      SELECT o.id, o.status, c.name as customerName,
+             SUM(oi.price * oi.quantity) as total
+      FROM orders o
+      JOIN customers c ON o.customer_id = c.id
+      JOIN order_items oi ON o.id = oi.order_id
+      WHERE o.id = ?
+      GROUP BY o.id, o.status, c.name
+    `, [orderId]);
+  }
+}
+```
+
+### Separate Read/Write Databases
+```javascript
+// Write to OLTP (MySQL, PostgreSQL)
+// Read from OLAP (Elasticsearch, MongoDB)
+
+// Command writes to primary
+class CreateOrderHandler {
+  async handle(command) {
+    const order = Order.create(command);
+    await this.writeDb.orders.insert(order);
+    
+    // Publish event for read model sync
+    await this.eventBus.publish(new OrderCreated(order));
+  }
+}
+
+// Event handler updates read model
+class OrderProjectionHandler {
+  async handleOrderCreated(event) {
+    await this.readDb.orderViews.insert({
+      orderId: event.orderId,
+      customerName: event.customerName,
+      total: event.total,
+      status: 'pending',
+      createdAt: event.createdAt
+    });
+  }
+  
+  async handleOrderConfirmed(event) {
+    await this.readDb.orderViews.update(
+      { orderId: event.orderId },
+      { status: 'confirmed', confirmedAt: event.confirmedAt }
+    );
+  }
+}
+```
+
+## Frontend CQRS
+
+### State Management
+```javascript
+// Redux Toolkit with separate slices
+// Write Slice (Commands)
+const cartCommandSlice = createSlice({
+  name: 'cartCommands',
+  initialState: {},
+  reducers: {
+    addItemCommand: (state, action) => {
+      // Just record the command
+      state.pendingCommands.push({
+        type: 'ADD_ITEM',
+        payload: action.payload,
+        timestamp: Date.now()
+      });
+    }
+  }
+});
+
+// Read Slice (Queries/Projections)
+const cartQuerySlice = createSlice({
+  name: 'cartQueries',
+  initialState: {
+    items: [],
+    total: 0,
+    itemCount: 0
+  },
+  reducers: {
+    cartUpdated: (state, action) => {
+      // Pre-computed view
+      state.items = action.payload.items;
+      state.total = action.payload.items.reduce(
+        (sum, item) => sum + item.price * item.quantity, 0
+      );
+      state.itemCount = action.payload.items.reduce(
+        (sum, item) => sum + item.quantity, 0
+      );
+    }
+  }
+});
+```
+
+### API Design
+```typescript
+// Separate endpoints for commands and queries
+// Commands (mutations)
+POST /api/commands/orders/create
+POST /api/commands/orders/cancel
+POST /api/commands/orders/ship
+
+// Queries (read-only)
+GET /api/queries/orders/:id
+GET /api/queries/orders/search?q=...
+GET /api/queries/orders/dashboard
+```
+
+## Benefits
+
+### 1. Optimized Performance
+```javascript
+// Write model: Normalized, transaction-safe
+// Read model: Denormalized, indexed for queries
+
+// Read model example - pre-computed aggregations
+const orderSummary = {
+  orderId: '123',
+  customerName: 'John Doe',
+  totalAmount: 299.99,
+  itemCount: 5,
+  status: 'shipped',
+  lastUpdated: '2024-01-15T10:30:00Z'
+  // No need to join tables!
+};
+```
+
+### 2. Scalability
+```
+Read Side:  
+- Scale horizontally (10+ read replicas)
+- Cache aggressively
+- Use specialized read databases (Elasticsearch)
+
+Write Side:
+- Scale vertically (stronger consistency)
+- Fewer replicas needed
+- Optimized for transactions
+```
+
+### 3. Security
+```javascript
+// Different authorization for reads vs writes
+
+// Command requires admin
+class DeleteUserHandler {
+  async handle(command) {
+    if (!this.authService.hasRole('admin')) {
+      throw new UnauthorizedError();
+    }
+    // ... delete user
+  }
+}
+
+// Query available to all
+class GetUserProfileHandler {
+  async handle(query) {
+    // Any authenticated user can read profiles
+    return await this.userRepo.findPublicProfile(query.userId);
+  }
+}
+```
+
+## Challenges
+
+### 1. Eventual Consistency
+```javascript
+// Command completes
+await orderService.confirmOrder(orderId);
+
+// Read model not yet updated
+const order = await orderQueryService.getOrder(orderId);
+console.log(order.status); // Might still be 'pending'
+
+// Solution: Optimistic UI or wait for projection
+```
+
+### 2. Complexity
+```
+- Two models to maintain
+- Synchronization logic
+- Event handling infrastructure
+- More complex testing
+```
+
+### 3. Data Duplication
+```javascript
+// Same data in multiple places
+// Order data in:
+// - orders table (write)
+// - order_views collection (read)
+// - search index (read)
+// - cache (read)
+```
+
+## Best Practices
+
+### 1. Start Simple
+```javascript
+// Begin with single database
+// Separate models at application layer
+// Only split databases when needed
+```
+
+### 2. Use Events for Sync
+```javascript
+// Event-driven synchronization
+class OrderCreatedEvent {
+  constructor(orderId, customerId, items, total) {
+    this.orderId = orderId;
+    this.customerId = customerId;
+    this.items = items;
+    this.total = total;
+    this.createdAt = new Date();
+  }
+}
+
+// Handler updates all read models
+async function handleOrderCreated(event) {
+  await Promise.all([
+    updateOrderView(event),
+    updateCustomerDashboard(event),
+    updateSearchIndex(event),
+    sendNotification(event)
+  ]);
+}
+```
+
+### 3. Idempotent Handlers
+```javascript
+// Handle duplicate events gracefully
+async function updateOrderView(event) {
+  const existing = await readDb.orderViews.findById(event.orderId);
+  
+  if (existing && existing.version >= event.version) {
+    return; // Already processed
+  }
+  
+  await readDb.orderViews.upsert({
+    orderId: event.orderId,
+    ...event.data,
+    version: event.version
+  });
+}
+```
+
+<KeyTakeaway>
+CQRS separates read and write operations for optimized performance and scalability. Start with logical separation in a single database before moving to physical separation. Use events to synchronize read models and embrace eventual consistency. CQRS adds complexity—only use it when the domain complexity justifies it.
+</KeyTakeaway>

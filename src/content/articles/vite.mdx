@@ -1,19 +1,195 @@
 ---
 title: "Vite"
 slug: "vite"
-subtitle: "Deep dive into vite"
+subtitle: "Next generation frontend tooling"
 category: "bundling"
 icon: "zap"
-description: "Understanding vite and its applications in modern web development"
+description: "Lightning fast build tool leveraging native ES modules for instant HMR and optimized production builds"
 difficulty: "beginner"
-tags: ["bundling","vite","esbuild"]
-related: []
-resources: []
-status: "stub"
+tags: ["bundling","vite","esbuild","development"]
+related: ["webpack","esbuild","rollup"]
+resources:
+  - title: "Vite Docs"
+    url: "https://vitejs.dev/guide/"
+  - title: "Why Vite"
+    url: "https://vitejs.dev/guide/why.html"
+status: "published"
 ---
 
 <DefinitionBlock>
-Vite is a concept in frontend engineering. This article is currently being written.
+Vite is a build tool that aims to provide a faster and leaner development experience for modern web projects. It leverages native ES modules in the browser for lightning-fast cold start and instant hot module replacement (HMR).
 </DefinitionBlock>
 
-<StubNotice />
+## Why Vite?
+
+### Problems with Traditional Bundlers
+```javascript
+// Traditional bundler workflow:
+// 1. Start dev server
+// 2. Bundle entire application (10s - 30s)
+// 3. Serve bundled files
+// 4. On file change, rebundle (1s - 5s)
+
+// Vite workflow:
+// 1. Start dev server (instant)
+// 2. Serve files on-demand via native ESM
+// 3. On file change, HMR updates (50ms)
+```
+
+### Key Advantages
+- **Instant server start** - No bundling during development
+- **Lightning fast HMR** - Module-level updates
+- **Optimized builds** - Uses Rollup for production
+- **Out-of-box features** - TypeScript, JSX, CSS imports
+
+## Getting Started
+
+### Installation
+```bash
+# Create new project
+npm create vite@latest my-app -- --template react
+npm create vite@latest my-app -- --template vue
+npm create vite@latest my-app -- --template vanilla-ts
+
+# Existing project
+npm install -D vite
+```
+
+### Project Structure
+```
+my-app/
+├── index.html          # Entry point
+├── vite.config.js      # Configuration
+├── package.json
+└── src/
+    ├── main.js
+    ├── App.jsx
+    └── assets/
+```
+
+### Basic Configuration
+```javascript
+// vite.config.js
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 3000,
+    open: true,
+    proxy: {
+      '/api': 'http://localhost:8080'
+    }
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: true
+  }
+});
+```
+
+## Features
+
+### Native ESM in Development
+```javascript
+// index.html
+<script type="module" src="/src/main.js"></script>
+
+// Vite serves files as native ES modules
+// No bundling during development!
+import { createApp } from 'vue'; // Fetched on demand
+import App from './App.vue';      // Transformed but not bundled
+```
+
+### Hot Module Replacement
+```javascript
+// main.js
+import { render } from './render';
+
+render();
+
+// Vite handles HMR automatically
+if (import.meta.hot) {
+  import.meta.hot.accept((newModule) => {
+    // Handle module update
+    newModule.render();
+  });
+}
+```
+
+### TypeScript Support
+```typescript
+// No configuration needed!
+// Vite supports TypeScript out of the box
+
+import { defineComponent } from 'vue';
+
+interface User {
+  id: number;
+  name: string;
+}
+
+export default defineComponent({
+  setup() {
+    const user: User = { id: 1, name: 'John' };
+    return { user };
+  }
+});
+```
+
+### CSS Features
+```javascript
+// Import CSS directly
+import './styles.css';
+
+// CSS Modules
+import styles from './Component.module.css';
+
+// Preprocessors (install separately)
+import './styles.scss';
+
+// CSS with import.meta.glob
+const modules = import.meta.glob('./styles/*.css');
+```
+
+## Build Optimization
+
+### Code Splitting
+```javascript
+// Automatic code splitting
+// Dynamic imports create separate chunks
+const Admin = () => import('./Admin.jsx');
+
+// Vite also supports:
+// - CSS code splitting
+// - Preload generation
+// - Asset optimization
+```
+
+### Environment Variables
+```javascript
+// .env
+VITE_API_URL=https://api.example.com
+VITE_APP_TITLE=My App
+
+// In code
+console.log(import.meta.env.VITE_API_URL);
+
+// Access in HTML
+<title>%VITE_APP_TITLE%</title>
+```
+
+## Comparison
+
+| Feature | Vite | Webpack |
+|---------|------|---------|
+| Cold Start | Instant | 10-30s |
+| HMR | 50ms | 1-5s |
+| Config | Minimal | Extensive |
+| Prod Build | Rollup | Webpack |
+| Learning Curve | Low | High |
+
+<KeyTakeaway>
+Vite revolutionizes frontend development by using native ES modules for instant dev server startup and lightning-fast HMR. It requires minimal configuration, supports TypeScript and modern features out of the box, and produces optimized production builds using Rollup.
+</KeyTakeaway>

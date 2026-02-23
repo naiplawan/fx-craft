@@ -1,19 +1,302 @@
 ---
 title: "Monorepos"
 slug: "monorepos"
-subtitle: "Deep dive into monorepos"
+subtitle: "Manage multiple packages in one repository"
 category: "architecture"
 icon: "folder-tree"
-description: "Understanding monorepos and its applications in modern web development"
+description: "Organize and scale frontend projects using monorepo architecture with tools like Nx, Turborepo, and Rush"
 difficulty: "intermediate"
-tags: ["architecture","tooling","scaling"]
-related: []
-resources: []
-status: "stub"
+tags: ["architecture","tooling","scaling","monorepo"]
+related: ["design-systems","micro-frontends","module-federation"]
+resources:
+  - title: "Monorepo Tools"
+    url: "https://monorepo.tools/"
+  - title: "Nx Documentation"
+    url: "https://nx.dev/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Monorepos is a concept in frontend engineering. This article is currently being written.
+A monorepo is a single repository containing multiple distinct projects with well-defined relationships. It enables code sharing, atomic changes across projects, and unified tooling while maintaining clear boundaries between packages.
 </DefinitionBlock>
 
-<StubNotice />
+## Monorepo vs Polyrepo
+
+```
+Polyrepo:                    Monorepo:
+┌─────────────┐              ┌──────────────────────────────┐
+│  Repo A     │              │         Monorepo             │
+│  (App)      │              │  ┌────────┐  ┌────────┐     │
+└─────────────┘              │  │ App    │  │ Lib    │     │
+                             │  │        │  │        │     │
+┌─────────────┐              │  ├────────┤  ├────────┤     │
+│  Repo B     │              │  │ Shared │  │ Config │     │
+│  (Library)  │              │  │ UI     │  │        │     │
+└─────────────┘              │  └────────┘  └────────┘     │
+                             └──────────────────────────────┘
+                             
+Changes across repos          Single commit across packages
+Multiple PRs                  One PR
+Version management            Atomic changes
+Cross-repo breaking changes   Detected immediately
+```
+
+## Tools
+
+### Nx
+```json
+// nx.json
+{
+  "extends": "nx/presets/core.json",
+  "npmScope": "myorg",
+  "tasksRunnerOptions": {
+    "default": {
+      "runner": "nx/tasks-runners/default",
+      "options": {
+        "cacheableOperations": ["build", "test", "lint"]
+      }
+    }
+  }
+}
+```
+
+```bash
+# Generate new app
+nx generate @nx/react:app my-app
+
+# Build with caching
+nx build my-app
+
+# Run tests for affected projects
+nx affected:test
+
+# Graph dependencies
+nx graph
+```
+
+### Turborepo
+```json
+// turbo.json
+{
+  "pipeline": {
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**", ".next/**"]
+    },
+    "test": {
+      "dependsOn": ["build"]
+    },
+    "lint": {
+      "outputs": []
+    }
+  }
+}
+```
+
+```bash
+# Run tasks with caching
+turbo run build test lint
+
+# Filter by package
+turbo run build --filter=web...
+
+# Parallel execution
+turbo run test --concurrency=4
+```
+
+### pnpm Workspaces
+```json
+// package.json
+{
+  "name": "monorepo-root",
+  "private": true,
+  "workspaces": ["packages/*", "apps/*"]
+}
+
+// pnpm-workspace.yaml
+packages:
+  - 'packages/*'
+  - 'apps/*'
+  - 'tools/*'
+```
+
+```bash
+# Add dependency to specific package
+pnpm add lodash --filter @myorg/shared-ui
+
+# Install all dependencies
+pnpm install
+
+# Run script in all packages
+pnpm -r run build
+```
+
+## Project Structure
+
+```
+my-monorepo/
+├── apps/
+│   ├── web/                 # Main web app
+│   ├── admin/               # Admin dashboard
+│   └── mobile/              # Mobile app
+├── packages/
+│   ├── ui/                  # Shared UI components
+│   ├── utils/               # Utility functions
+│   ├── config/              # Shared configs (eslint, ts)
+│   └── types/               # Shared TypeScript types
+├── tools/
+│   └── scripts/             # Build scripts
+├── package.json
+├── pnpm-workspace.yaml
+├── turbo.json
+└── nx.json
+```
+
+## Package Configuration
+
+### Shared Package
+```json
+// packages/ui/package.json
+{
+  "name": "@myorg/ui",
+  "version": "1.0.0",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsup src/index.ts --format cjs,esm --dts",
+    "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
+    "lint": "eslint src/",
+    "test": "vitest"
+  },
+  "peerDependencies": {
+    "react": "^18.0.0"
+  }
+}
+```
+
+### App Using Package
+```json
+// apps/web/package.json
+{
+  "name": "@myorg/web",
+  "dependencies": {
+    "@myorg/ui": "workspace:*",
+    "@myorg/utils": "workspace:*",
+    "next": "^14.0.0",
+    "react": "^18.0.0"
+  }
+}
+```
+
+## Build Pipeline
+
+### Dependency Graph
+```javascript
+// Turborepo builds in correct order
+// web depends on ui
+// ui depends on utils
+
+// Running `turbo run build`:
+// 1. Build utils
+// 2. Build ui (after utils)
+// 3. Build web (after ui)
+```
+
+### Caching
+```javascript
+// Only rebuild what changed
+// Cache hits = instant results
+
+// Remote caching (Turborepo/Nx Cloud)
+// Share cache across CI/CD and team
+```
+
+## Best Practices
+
+### 1. Clear Boundaries
+```javascript
+// Define public API for each package
+// packages/ui/src/index.ts
+export { Button } from './Button';
+export { Input } from './Input';
+// Don't export internals
+// export { internalHelper } from './internal'; // ❌
+```
+
+### 2. Shared Configuration
+```javascript
+// packages/eslint-config/index.js
+module.exports = {
+  extends: ['eslint:recommended', 'plugin:react/recommended'],
+  rules: {
+    // Shared rules
+  }
+};
+
+// apps/web/.eslintrc.js
+module.exports = {
+  extends: ['@myorg/eslint-config']
+};
+```
+
+### 3. Testing Strategy
+```bash
+# Unit tests per package
+pnpm -r run test
+
+# Integration tests at app level
+nx test web --configuration=integration
+
+# E2E tests
+nx e2e web-e2e
+```
+
+### 4. Versioning
+```bash
+# Changesets (recommended)
+npx changeset
+# Select packages, describe changes
+
+# Version and publish
+npx changeset version
+npx changeset publish
+```
+
+## Common Challenges
+
+### Repository Size
+```bash
+# Use sparse checkouts
+git sparse-checkout set apps/web packages/ui
+
+# Shallow clones
+git clone --depth 1
+
+# Git LFS for binary files
+```
+
+### Permission Management
+```bash
+# CODEOWNERS file
+/packages/ui/       @team-ui
+/apps/web/          @team-web
+/packages/config/   @team-platform
+```
+
+### CI/CD Optimization
+```yaml
+# .github/workflows/ci.yml
+- uses: actions/checkout@v3
+  
+- uses: pnpm/action-setup@v2
+  
+- name: Build only affected
+  run: npx nx affected:build --base=origin/main
+  
+- name: Test only affected
+  run: npx nx affected:test --base=origin/main
+```
+
+<KeyTakeaway>
+Monorepos excel for related projects with shared code. Use Nx or Turborepo for task orchestration and caching, pnpm for fast workspace management, and changesets for versioning. Start simple and add tooling incrementally as your monorepo grows.
+</KeyTakeaway>

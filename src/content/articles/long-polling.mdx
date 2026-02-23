@@ -1,19 +1,235 @@
 ---
 title: "Long Polling"
 slug: "long-polling"
-subtitle: "Deep dive into long polling"
+subtitle: "Real-time updates via HTTP request holding"
 category: "networking"
 icon: "activity"
-description: "Understanding long polling and its applications in modern web development"
+description: "Implement real-time updates by holding HTTP requests open until data is available"
 difficulty: "intermediate"
-tags: ["http","real-time","fallback"]
-related: []
-resources: []
-status: "stub"
+tags: ["http","real-time","polling","fallback"]
+related: ["sse","websockets","http2"]
+resources:
+  - title: "MDN - WebSockets"
+    url: "https://developer.mozilla.org/en-US/docs/Web/API/WebSockets_API"
+  - title: "Real-time Web Technologies Guide"
+    url: "https://www.html5rocks.com/en/tutorials/frameworks/real-time/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Long Polling is a concept in frontend engineering. This article is currently being written.
+Long polling is a technique where the client makes an HTTP request and the server holds the connection open until new data is available. Once data is sent (or a timeout occurs), the client immediately makes another request, creating a near real-time communication channel over standard HTTP.
 </DefinitionBlock>
 
-<StubNotice />
+## How It Works
+
+```
+Traditional Polling:        Long Polling:
+
+Request 1 ────>            Request 1 ────>
+<─── Response              <─────────────── Response
+(wait 5s)                  (held 30s until data)
+                           
+Request 2 ────>            Request 2 ────>
+<─── Response              <─────────────── Response
+(wait 5s)                  (held until data)
+
+High latency,              Low latency,
+many empty responses       efficient
+```
+
+## Implementation
+
+### Client-Side
+```javascript
+async function longPoll() {
+  try {
+    const response = await fetch('/api/poll', {
+      // Long timeout
+      signal: AbortSignal.timeout(60000)
+    });
+    
+    const data = await response.json();
+    
+    // Handle received data
+    handleUpdate(data);
+    
+  } catch (error) {
+    if (error.name === 'TimeoutError') {
+      console.log('Long poll timeout, reconnecting...');
+    } else {
+      console.error('Poll error:', error);
+      // Wait before retry
+      await sleep(5000);
+    }
+  } finally {
+    // Immediately poll again
+    longPoll();
+  }
+}
+
+// Start polling
+longPoll();
+```
+
+### Server-Side
+```javascript
+// Node.js with Express
+app.get('/api/poll', async (req, res) => {
+  const clientId = req.query.clientId;
+  
+  // Set headers to prevent buffering
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Cache-Control', 'no-cache');
+  
+  try {
+    // Wait for data (with timeout)
+    const data = await Promise.race([
+      waitForData(clientId),
+      sleep(30000) // 30 second timeout
+    ]);
+    
+    if (data) {
+      res.json({ 
+        type: 'update', 
+        data 
+      });
+    } else {
+      // Timeout - send empty to trigger reconnect
+      res.json({ type: 'timeout' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Data waiting mechanism
+const pendingRequests = new Map();
+
+function waitForData(clientId) {
+  return new Promise((resolve) => {
+    pendingRequests.set(clientId, resolve);
+  });
+}
+
+// When new data arrives
+function notifyClients(data) {
+  for (const [clientId, resolve] of pendingRequests) {
+    resolve(data);
+  }
+  pendingRequests.clear();
+}
+```
+
+## Comparison
+
+### vs Regular Polling
+```javascript
+// Regular polling - wasteful
+setInterval(async () => {
+  const data = await fetch('/api/data');
+  // Most responses: "no new data"
+}, 5000); // Check every 5 seconds
+
+// Long polling - efficient
+async function longPoll() {
+  const data = await fetch('/api/poll'); // Waits for data
+  handleData(data);
+  longPoll(); // Reconnect immediately
+}
+// Only makes requests when needed
+```
+
+### vs WebSockets
+```javascript
+// Long polling
+// ✅ Works with HTTP proxies/firewalls
+// ✅ Simple to implement
+// ✅ Auto-reconnect built-in
+// ❌ Higher latency than WebSockets
+// ❌ More overhead per message
+
+// WebSockets
+// ✅ Lower latency
+// ✅ Bidirectional
+// ✅ Lower overhead
+// ❌ Proxy/firewall issues
+// ❌ More complex
+```
+
+## Use Cases
+
+### When to Use Long Polling
+```
+✅ Need real-time but WebSockets not available
+✅ Strict HTTP-only environment
+✅ Simple implementation needed
+✅ Fallback for WebSocket failures
+✅ Behind restrictive proxies
+
+❌ High-frequency updates (use WebSockets)
+❌ Bidirectional communication (use WebSockets)
+❌ Binary data (use WebSockets)
+```
+
+## Best Practices
+
+### 1. Timeout Management
+```javascript
+// Client timeout should be longer than server
+const CLIENT_TIMEOUT = 35000; // 35 seconds
+const SERVER_TIMEOUT = 30000; // 30 seconds
+
+// This prevents both sides timing out simultaneously
+```
+
+### 2. Reconnection Backoff
+```javascript
+let retryDelay = 1000;
+
+async function poll() {
+  try {
+    const data = await fetchWithTimeout('/api/poll', 35000);
+    handleData(data);
+    retryDelay = 1000; // Reset on success
+  } catch (error) {
+    console.error('Poll failed, retrying in', retryDelay);
+    await sleep(retryDelay);
+    retryDelay = Math.min(retryDelay * 2, 30000); // Max 30s
+  }
+  
+  poll();
+}
+```
+
+### 3. Connection Cleanup
+```javascript
+// Server cleanup on disconnect
+req.on('close', () => {
+  clearTimeout(timeoutId);
+  pendingRequests.delete(clientId);
+  console.log(`Client ${clientId} disconnected`);
+});
+```
+
+## Modern Alternatives
+
+### Use SSE Instead (If Possible)
+```javascript
+// SSE is simpler for server->client
+const source = new EventSource('/api/events');
+source.onmessage = (e) => handleData(JSON.parse(e.data));
+
+// Auto-reconnects, simpler protocol
+```
+
+### Use WebSockets for Bidirectional
+```javascript
+// For chat, gaming, collaborative editing
+const ws = new WebSocket('wss://api.example.com');
+ws.onmessage = (e) => handleData(e.data);
+ws.send(JSON.stringify({ type: 'message', text: 'Hello' }));
+```
+
+<KeyTakeaway>
+Long polling provides real-time updates over standard HTTP by holding requests open until data is available. It's a good fallback when WebSockets aren't supported, but modern alternatives like SSE offer simpler implementations for server-to-client scenarios. Use long polling when you need HTTP compatibility and can tolerate slightly higher latency.
+</KeyTakeaway>

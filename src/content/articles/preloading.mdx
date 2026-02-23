@@ -1,19 +1,218 @@
 ---
 title: "Preloading Resources"
 slug: "preloading"
-subtitle: "Deep dive into preloading resources"
+subtitle: "Optimize resource loading with hints"
 category: "performance"
 icon: "download"
-description: "Understanding preloading resources and its applications in modern web development"
+description: "Use resource hints to prefetch, preload, and prerender resources for faster page loads"
 difficulty: "intermediate"
-tags: ["performance","resource-hints","http"]
-related: []
-resources: []
-status: "stub"
+tags: ["performance","resource-hints","http","optimization"]
+related: ["lazy-loading","code-splitting","core-web-vitals"]
+resources:
+  - title: "MDN - Link Types"
+    url: "https://developer.mozilla.org/en-US/docs/Web/HTML/Link_types"
+  - title: "Google - Preload Key Requests"
+    url: "https://web.dev/uses-rel-preload/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Preloading Resources is a concept in frontend engineering. This article is currently being written.
+Resource hints like preload, prefetch, and preconnect tell the browser how to prioritize loading resources. They help optimize the critical rendering path by fetching important resources early and preparing connections before they're needed.
 </DefinitionBlock>
 
-<StubNotice />
+## Resource Hint Types
+
+### 1. Preload - Current Page
+```html
+<!-- Critical resources needed immediately -->
+<link rel="preload" href="/critical.css" as="style">
+<link rel="preload" href="/hero-image.jpg" as="image">
+<link rel="preload" href="/font.woff2" as="font" type="font/woff2" crossorigin>
+
+<!-- Preload JavaScript module -->
+<link rel="modulepreload" href="/app.mjs">
+```
+
+**When to use:**
+- Above-the-fold images
+- Critical CSS
+- Web fonts
+- Important JavaScript
+
+**Priority:** High
+
+### 2. Prefetch - Next Navigation
+```html
+<!-- Resources needed for next page -->
+<link rel="prefetch" href="/about-page.html">
+<link rel="prefetch" href="/next-page-chunk.js">
+
+<!-- Cross-origin prefetch -->
+<link rel="prefetch" href="https://cdn.example.com/resource.js" crossorigin>
+```
+
+**When to use:**
+- Likely next page
+- Route-specific code splits
+- Assets for next user action
+
+**Priority:** Low (idle time)
+
+### 3. Preconnect - Early Connection
+```html
+<!-- Establish early connection to origins -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://api.example.com">
+```
+
+**When to use:**
+- Third-party CDNs
+- API origins
+- Font hosts
+
+**Benefit:** Saves DNS + TCP + TLS time (100-300ms)
+
+### 4. DNS-Prefetch - DNS Only
+```html
+<!-- Just DNS lookup, lighter than preconnect -->
+<link rel="dns-prefetch" href="https://analytics.example.com">
+```
+
+### 5. Prerender - Full Page
+```html
+<!-- Render entire page in background -->
+<link rel="prerender" href="/next-page">
+```
+
+**When to use:**
+- Very likely next page
+- Search results page
+
+**Warning:** Heavy resource usage
+
+## Usage Patterns
+
+### Critical Path Optimization
+```html
+<head>
+  <!-- 1. Preconnect to critical origins -->
+  <link rel="preconnect" href="https://cdn.example.com">
+  
+  <!-- 2. Preload critical fonts -->
+  <link rel="preload" href="/fonts/main.woff2" as="font" crossorigin>
+  
+  <!-- 3. Inline critical CSS -->
+  <style>
+    /* Critical CSS */
+  </style>
+  
+  <!-- 4. Preload critical JS -->
+  <link rel="modulepreload" href="/app.mjs">
+</head>
+```
+
+### Dynamic Prefetching
+```javascript
+// Prefetch on hover
+const link = document.createElement('link');
+link.rel = 'prefetch';
+link.href = nextPageUrl;
+document.head.appendChild(link);
+
+// React Router example
+import { Link } from 'react-router-dom';
+
+function PrefetchLink({ to, children }) {
+  return (
+    <Link 
+      to={to} 
+      onMouseEnter={() => {
+        // Prefetch route component
+        const Component = routes[to];
+        Component.preload?.();
+      }}
+    >
+      {children}
+    </Link>
+  );
+}
+```
+
+### Webpack Magic Comments
+```javascript
+// Prefetch on parent component load
+const AdminPanel = lazy(() => import(
+  /* webpackPrefetch: true */
+  './AdminPanel'
+));
+
+// Preload on interaction
+const HeavyChart = lazy(() => import(
+  /* webpackPreload: true */
+  './HeavyChart'
+));
+```
+
+## Priority Comparison
+
+```
+Priority:    High ───────────────────────────> Low
+             │        │         │          │
+Resource:    Preload  Preconnect Prefetch  Prerender
+             │        │         │          │
+When:        Now      Soon      Later      Next Page
+             │        │         │          │
+Impact:      Critical Important Nice-to-have Speculative
+```
+
+## Common Mistakes
+
+```html
+<!-- ❌ Don't preload everything -->
+<link rel="preload" href="/image1.jpg">
+<link rel="preload" href="/image2.jpg">
+<link rel="preload" href="/image3.jpg">
+<!-- Overloads bandwidth, delays critical resources -->
+
+<!-- ✅ Only preload critical resources -->
+<link rel="preload" href="/hero-image.jpg">
+<link rel="preload" href="/critical.css">
+
+<!-- ❌ Wrong 'as' attribute -->
+<link rel="preload" href="/font.woff2">
+<!-- Missing as="font" -->
+
+<!-- ✅ Correct -->
+<link rel="preload" href="/font.woff2" as="font" type="font/woff2" crossorigin>
+
+<!-- ❌ Preloading non-existent resources -->
+<link rel="preload" href="/will-create-later.js">
+<!-- Wastes bandwidth -->
+```
+
+## Measuring Impact
+
+### Chrome DevTools
+```
+1. Network tab
+2. Check Priority column
+3. Look for resources loaded early
+
+Waterfall should show:
+- Preloaded resources start early
+- Critical resources complete before render
+```
+
+### Lighthouse
+```javascript
+// "Preload key requests" audit
+// Checks if late-discovered resources are preloaded
+
+// Good score: Critical resources preloaded
+// Bad score: Late-discovered blocking resources
+```
+
+<KeyTakeaway>
+Use resource hints strategically: preconnect to critical origins, preload above-the-fold resources, prefetch likely next pages. Don't overuse—prioritize critical resources and measure the impact. A few well-placed hints can significantly improve load times.
+</KeyTakeaway>

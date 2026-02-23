@@ -1,19 +1,223 @@
 ---
 title: "Context API"
 slug: "context-api"
-subtitle: "Deep dive into context api"
+subtitle: "Share data across the component tree"
 category: "react-internals"
 icon: "share-2"
-description: "Understanding context api and its applications in modern web development"
+description: "Pass data through the component tree without prop drilling using React's Context API"
 difficulty: "intermediate"
-tags: ["react","state","props"]
-related: []
-resources: []
-status: "stub"
+tags: ["react","state","props","composition"]
+related: ["react-hooks","composition"]
+resources:
+  - title: "React Docs - Context"
+    url: "https://react.dev/reference/react/useContext"
+  - title: "Kent C. Dodds - How to use React Context effectively"
+    url: "https://kentcdodds.com/blog/how-to-use-react-context-effectively"
+status: "published"
 ---
 
 <DefinitionBlock>
-Context API is a concept in frontend engineering. This article is currently being written.
+Context provides a way to pass data through the component tree without having to pass props down manually at every level. It's designed to share data that can be considered "global" for a tree of React components, such as current authenticated user, theme, or preferred language.
 </DefinitionBlock>
 
-<StubNotice />
+## Basic Usage
+
+### Creating Context
+```javascript
+import { createContext, useContext, useState } from 'react';
+
+const ThemeContext = createContext('light');
+
+function App() {
+  const [theme, setTheme] = useState('light');
+  
+  return (
+    <ThemeContext.Provider value={{ theme, setTheme }}>
+      <Toolbar />
+      <MainContent />
+    </ThemeContext.Provider>
+  );
+}
+
+function ThemedButton() {
+  const { theme, setTheme } = useContext(ThemeContext);
+  
+  return (
+    <button
+      onClick={() => setTheme(theme === 'light' ? 'dark' : 'light')}
+      className={theme}
+    >
+      Toggle Theme
+    </button>
+  );
+}
+```
+
+## Context with Provider Pattern
+
+### Auth Context
+```javascript
+const AuthContext = createContext(null);
+
+export function AuthProvider({ children }) {
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
+  
+  const login = async (email, password) => {
+    const user = await api.login(email, password);
+    setUser(user);
+  };
+  
+  const logout = () => {
+    api.logout();
+    setUser(null);
+  };
+  
+  const value = {
+    user,
+    login,
+    logout,
+    loading,
+    isAuthenticated: !!user
+  };
+  
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within AuthProvider');
+  }
+  return context;
+};
+
+// Usage
+function UserProfile() {
+  const { user, logout } = useAuth();
+  
+  return (
+    <div>
+      <p>Welcome, {user.name}</p>
+      <button onClick={logout}>Logout</button>
+    </div>
+  );
+}
+```
+
+## Performance Optimization
+
+### Split Contexts
+```javascript
+// Instead of one big context, split by concern
+const ThemeContext = createContext(null);
+const UserContext = createContext(null);
+const LocaleContext = createContext(null);
+
+// Components only subscribe to what they need
+function ThemedComponent() {
+  const theme = useContext(ThemeContext); // Won't re-render on user changes
+  return <div className={theme}>...</div>;
+}
+```
+
+### Memoization
+```javascript
+function ThemeProvider({ children }) {
+  const [theme, setTheme] = useState('light');
+  
+  // Memoize the context value
+  const value = useMemo(() => ({
+    theme,
+    setTheme
+  }), [theme]);
+  
+  return (
+    <ThemeContext.Provider value={value}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+```
+
+## Common Patterns
+
+### Compound Components
+```javascript
+const TabsContext = createContext(null);
+
+function Tabs({ children, defaultTab }) {
+  const [activeTab, setActiveTab] = useState(defaultTab);
+  
+  return (
+    <TabsContext.Provider value={{ activeTab, setActiveTab }}>
+      {children}
+    </TabsContext.Provider>
+  );
+}
+
+function TabList({ children }) {
+  return <div className="tab-list">{children}</div>;
+}
+
+function Tab({ id, children }) {
+  const { activeTab, setActiveTab } = useContext(TabsContext);
+  
+  return (
+    <button
+      className={activeTab === id ? 'active' : ''}
+      onClick={() => setActiveTab(id)}
+    >
+      {children}
+    </button>
+  );
+}
+
+function TabPanel({ id, children }) {
+  const { activeTab } = useContext(TabsContext);
+  
+  if (activeTab !== id) return null;
+  return <div className="tab-panel">{children}</div>;
+}
+
+// Usage
+<Tabs defaultTab="1">
+  <TabList>
+    <Tab id="1">Tab 1</Tab>
+    <Tab id="2">Tab 2</Tab>
+  </TabList>
+  <TabPanel id="1">Content 1</TabPanel>
+  <TabPanel id="2">Content 2</TabPanel>
+</Tabs>
+```
+
+## When Not to Use Context
+
+```javascript
+// Prop drilling is fine for simple cases
+function App() {
+  const user = { name: 'John' };
+  return <Layout user={user} />;
+}
+
+function Layout({ user }) {
+  return <Header user={user} />;
+}
+
+function Header({ user }) {
+  return <UserMenu user={user} />;
+}
+
+// Use Context when:
+// 1. Many components need the data
+// 2. Intermediate components don't use the data
+// 3. Data changes frequently and affects many components
+```
+
+<KeyTakeaway>
+Context API eliminates prop drilling for truly global data. Create custom hooks with useContext for clean consumption, split contexts by concern to minimize re-renders, and always memoize context values. Remember: Context is not a state management solution - it's a dependency injection mechanism.
+</KeyTakeaway>

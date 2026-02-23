@@ -1,19 +1,313 @@
 ---
 title: "Design Systems"
 slug: "design-systems"
-subtitle: "Deep dive into design systems"
+subtitle: "Build consistent UI at scale"
 category: "architecture"
 icon: "box"
-description: "Understanding design systems and its applications in modern web development"
+description: "Create reusable component libraries, design tokens, and documentation for consistent user interfaces"
 difficulty: "intermediate"
-tags: ["architecture","ui","components"]
-related: []
-resources: []
-status: "stub"
+tags: ["architecture","ui","components","design"]
+related: ["micro-frontends","component-composition","storybook"]
+resources:
+  - title: "Design Systems Handbook"
+    url: "https://www.designbetter.co/design-systems-handbook"
+  - title: "Storybook"
+    url: "https://storybook.js.org/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Design Systems is a concept in frontend engineering. This article is currently being written.
+A design system is a collection of reusable components, guided by clear standards, that can be assembled to build any number of applications. It includes UI components, design tokens, patterns, and documentation that ensure consistency across products and teams.
 </DefinitionBlock>
 
-<StubNotice />
+## Components of a Design System
+
+### 1. Design Tokens
+```javascript
+// tokens/colors.js
+export const colors = {
+  primary: {
+    50: '#eff6ff',
+    100: '#dbeafe',
+    500: '#3b82f6',
+    600: '#2563eb',
+    900: '#1e3a8a',
+  },
+  neutral: {
+    0: '#ffffff',
+    100: '#f5f5f5',
+    900: '#171717',
+  },
+  semantic: {
+    success: '#22c55e',
+    warning: '#f59e0b',
+    error: '#ef4444',
+  }
+};
+
+// tokens/typography.js
+export const typography = {
+  fontFamily: {
+    sans: ['Inter', 'system-ui', 'sans-serif'],
+    mono: ['Fira Code', 'monospace'],
+  },
+  fontSize: {
+    xs: '0.75rem',
+    sm: '0.875rem',
+    base: '1rem',
+    lg: '1.125rem',
+    xl: '1.25rem',
+    '2xl': '1.5rem',
+  },
+  fontWeight: {
+    normal: '400',
+    medium: '500',
+    semibold: '600',
+    bold: '700',
+  }
+};
+
+// tokens/spacing.js
+export const spacing = {
+  0: '0',
+  1: '0.25rem',
+  2: '0.5rem',
+  4: '1rem',
+  8: '2rem',
+  16: '4rem',
+};
+```
+
+### 2. Component Library
+```javascript
+// components/Button/Button.tsx
+import React from 'react';
+import { colors, typography, spacing } from '../tokens';
+
+interface ButtonProps {
+  variant?: 'primary' | 'secondary' | 'ghost';
+  size?: 'sm' | 'md' | 'lg';
+  children: React.ReactNode;
+  onClick?: () => void;
+  disabled?: boolean;
+}
+
+export const Button: React.FC<ButtonProps> = ({
+  variant = 'primary',
+  size = 'md',
+  children,
+  onClick,
+  disabled
+}) => {
+  const baseStyles = {
+    fontFamily: typography.fontFamily.sans,
+    borderRadius: '0.375rem',
+    fontWeight: typography.fontWeight.medium,
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.5 : 1,
+  };
+  
+  const variantStyles = {
+    primary: {
+      backgroundColor: colors.primary[600],
+      color: colors.neutral[0],
+    },
+    secondary: {
+      backgroundColor: colors.neutral[100],
+      color: colors.neutral[900],
+    },
+    ghost: {
+      backgroundColor: 'transparent',
+      color: colors.primary[600],
+    }
+  };
+  
+  const sizeStyles = {
+    sm: { padding: `${spacing[1]} ${spacing[2]}`, fontSize: typography.fontSize.sm },
+    md: { padding: `${spacing[2]} ${spacing[4]}`, fontSize: typography.fontSize.base },
+    lg: { padding: `${spacing[4]} ${spacing[8]}`, fontSize: typography.fontSize.lg },
+  };
+  
+  return (
+    <button
+      style={{ ...baseStyles, ...variantStyles[variant], ...sizeStyles[size] }}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      {children}
+    </button>
+  );
+};
+```
+
+### 3. Patterns and Guidelines
+```markdown
+## Button Usage Guidelines
+
+### When to Use
+- Primary: Main call-to-action, 1 per page
+- Secondary: Alternative actions
+- Ghost: Low emphasis, toolbar actions
+
+### Accessibility
+- Always include visible text or aria-label
+- Maintain 4.5:1 contrast ratio
+- Keyboard focusable and operable
+
+### Examples
+[Storybook embed showing various states]
+```
+
+## Architecture
+
+### Monorepo Structure
+```
+design-system/
+├── packages/
+│   ├── tokens/           # Design tokens (JSON/JS)
+│   ├── components/       # React/Vue components
+│   ├── icons/           # Icon library
+│   └── themes/          # Theme configurations
+├── apps/
+│   ├── docs/            # Documentation site
+│   └── storybook/       # Component showcase
+├── tools/
+│   ├── eslint-config/   # Shared linting rules
+│   └── ts-config/       # Shared TypeScript config
+└── package.json
+```
+
+### Distribution
+```javascript
+// Package.json for components
+{
+  "name": "@company/design-system",
+  "version": "1.2.0",
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "files": ["dist"],
+  "peerDependencies": {
+    "react": "^17.0.0 || ^18.0.0",
+    "react-dom": "^17.0.0 || ^18.0.0"
+  }
+}
+
+// Build with Rollup or Vite
+// Tree-shakeable ES modules
+// TypeScript declarations
+```
+
+## Storybook Integration
+
+```javascript
+// .storybook/main.js
+module.exports = {
+  stories: ['../src/**/*.stories.@(js|jsx|ts|tsx)'],
+  addons: [
+    '@storybook/addon-essentials',
+    '@storybook/addon-a11y',      // Accessibility testing
+    '@storybook/addon-docs',       // Documentation
+  ],
+};
+
+// Button.stories.tsx
+import type { Meta, StoryObj } from '@storybook/react';
+import { Button } from './Button';
+
+const meta: Meta<typeof Button> = {
+  component: Button,
+  title: 'Components/Button',
+  parameters: {
+    docs: {
+      description: {
+        component: 'Buttons trigger actions or events.',
+      },
+    },
+  },
+};
+
+export default meta;
+type Story = StoryObj<typeof Button>;
+
+export const Primary: Story = {
+  args: {
+    variant: 'primary',
+    children: 'Click me',
+  },
+};
+
+export const Disabled: Story = {
+  args: {
+    ...Primary.args,
+    disabled: true,
+  },
+};
+```
+
+## Adoption Strategy
+
+### 1. Audit Existing UI
+```javascript
+// Identify inconsistencies
+// - 47 shades of blue
+// - 12 different button styles
+// - Inconsistent spacing
+```
+
+### 2. Gradual Migration
+```javascript
+// Start with new features using design system
+// Migrate pages incrementally
+// Deprecate old components
+
+// Wrapper for gradual adoption
+function LegacyButtonWrapper(props) {
+  return <NewButton {...mapLegacyProps(props)} />;
+}
+```
+
+### 3. Governance
+```javascript
+// Design System Committee
+// - Designers
+// - Frontend Engineers
+// - Product Managers
+
+// RFC Process for changes
+// - Proposal
+// - Review
+// - Implementation
+// - Documentation
+```
+
+## Best Practices
+
+### Versioning
+```javascript
+// Semantic versioning
+// - Major: Breaking changes (rename, remove)
+// - Minor: New features (add component)
+// - Patch: Bug fixes
+
+// Migration guides for major versions
+// Codemods for automatic updates
+```
+
+### Documentation
+```markdown
+## Component Checklist
+
+- [ ] Component implementation
+- [ ] TypeScript types
+- [ ] Unit tests (90%+ coverage)
+- [ ] Storybook stories
+- [ ] Usage documentation
+- [ ] Accessibility notes
+- [ ] Design specs linked
+- [ ] Change log entry
+```
+
+<KeyTakeaway>
+Design systems provide consistency and efficiency through reusable components and clear standards. Start small with tokens and components, use Storybook for documentation, and evolve gradually. A successful design system requires ongoing governance and collaboration between design and engineering.
+</KeyTakeaway>

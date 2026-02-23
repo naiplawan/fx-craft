@@ -1,19 +1,299 @@
 ---
 title: "Screen Readers"
 slug: "screen-readers"
-subtitle: "Deep dive into screen readers"
+subtitle: "Test with assistive technology"
 category: "accessibility"
 icon: "headphones"
-description: "Understanding screen readers and its applications in modern web development"
+description: "Understand how screen readers work and test your applications for users with visual impairments"
 difficulty: "intermediate"
-tags: ["a11y","screen-readers","testing"]
-related: []
-resources: []
-status: "stub"
+tags: ["a11y","screen-readers","testing","nvda"]
+related: ["aria","semantic-html","keyboard-navigation"]
+resources:
+  - title: "WebAIM - Screen Reader Survey"
+    url: "https://webaim.org/projects/screenreadersurvey/"
+  - title: "NVAccess"
+    url: "https://www.nvaccess.org/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Screen Readers is a concept in frontend engineering. This article is currently being written.
+Screen readers are assistive technologies that convert visual content into speech or braille. They enable users with visual impairments to navigate and interact with digital content. Understanding how screen readers work helps developers create truly accessible web applications.
 </DefinitionBlock>
 
-<StubNotice />
+## Popular Screen Readers
+
+### Desktop
+- **NVDA** (Windows) - Free, open source
+- **JAWS** (Windows) - Commercial, most popular
+- **VoiceOver** (macOS/iOS) - Built-in
+- **Narrator** (Windows) - Built-in
+
+### Mobile
+- **TalkBack** (Android)
+- **VoiceOver** (iOS)
+
+## How Screen Readers Work
+
+### Virtual Buffer
+```
+1. Screen reader loads page into virtual buffer
+2. Parses HTML and ARIA to create accessibility tree
+3. User navigates virtual buffer (not actual DOM)
+4. Converts text to speech or braille
+```
+
+### Navigation Modes
+```
+Browse Mode:
+- Read content linearly
+- Arrow keys navigate text
+- Screen reader intercepts keys
+
+Focus Mode:
+- Interact with form elements
+- Keys pass through to element
+- Tab moves between fields
+
+Application Mode:
+- For rich web apps
+- Developer controls keyboard handling
+- Similar to desktop application
+```
+
+## Testing with NVDA
+
+### Installation
+```
+1. Download from nvaccess.org
+2. Free, portable version available
+3. Works on Windows (even in VM)
+```
+
+### Essential Shortcuts
+```
+NVDA Key = Insert (or Caps Lock)
+
+Navigation:
+- Tab: Next focusable element
+- H: Next heading
+- 1-6: Next heading level 1-6
+- L: Next list
+- I: Next list item
+- T: Next table
+- F: Next form field
+- B: Next button
+- K: Next link
+- G: Next graphic
+
+Reading:
+- NVDA + Down: Read next line
+- NVDA + Up: Read previous line
+- NVDA + L: Read current line
+- Ctrl: Stop speaking
+
+Mode Switching:
+- NVDA + Space: Toggle browse/focus mode
+- Escape: Return to browse mode
+
+Landmarks:
+- D: Next landmark
+- Shift + D: Previous landmark
+```
+
+## Testing with VoiceOver (macOS)
+
+### Enable VoiceOver
+```
+Cmd + F5 (or Cmd + Fn + F5)
+or
+System Preferences > Accessibility > VoiceOver
+```
+
+### Essential Shortcuts
+```
+VO = Control + Option (or Caps Lock)
+
+Navigation:
+- VO + Right/Left: Next/previous item
+- VO + Command + H: Next heading
+- VO + Command + L: Next link
+- VO + Command + B: Next button
+
+Reading:
+- VO + A: Read all
+- VO + S: Read current sentence
+- Ctrl: Stop speaking
+
+Web Navigation:
+- VO + U: Web rotor (jump to headings, links, etc.)
+- VO + Shift + Down: Enter/interact
+- VO + Shift + Up: Exit
+```
+
+## What Screen Readers Announce
+
+### Semantic Elements
+```html
+<!-- <button> - Announces as "button" -->
+<button>Submit</button>
+
+<!-- <link> - Announces as "link" -->
+<a href="/">Home</a>
+
+<!-- <h1> - Announces as "heading level 1" -->
+<h1>Page Title</h1>
+
+<!-- <table> - Announces row/column info -->
+<table>
+  <thead>...</thead>
+  <tbody>...</tbody>
+</table>
+```
+
+### ARIA Live Regions
+```html
+<!-- Polite - announces when idle -->
+<div aria-live="polite" id="status">
+  3 items in cart
+</div>
+
+<!-- Assertive - interrupts immediately -->
+<div aria-live="assertive" role="alert">
+  Form submitted successfully
+</div>
+
+<script>
+// Screen reader announces when content changes
+document.getElementById('status').textContent = '5 items in cart';
+</script>
+```
+
+## Common Issues
+
+### Missing Labels
+```html
+<!-- Bad: No label announced -->
+<input type="text" placeholder="Name" />
+
+<!-- Good: Associated label -->
+<label for="name">Full Name</label>
+<input type="text" id="name" />
+
+<!-- Or aria-label -->
+<input type="text" aria-label="Full Name" />
+```
+
+### Invisible Content
+```html
+<!-- Bad: Positioned off-screen but readable -->
+<div style="position: absolute; left: -9999px;">
+  Hidden but read by screen reader!
+</div>
+
+<!-- Good: Truly hidden -->
+<div hidden>Not read</div>
+<div style="display: none;">Not read</div>
+<div aria-hidden="true">Not read</div>
+```
+
+### Decorative Images
+```html
+<!-- Bad: Announces filename -->
+<img src="decoration.jpg" />
+
+<!-- Good: Empty alt -->
+<img src="decoration.jpg" alt="" />
+```
+
+## Testing Checklist
+
+### Automated Testing
+```javascript
+// axe-core catches many issues
+import axe from 'axe-core';
+
+const results = await axe.run();
+// Check for:
+// - Missing alt text
+// - Missing labels
+// - Color contrast
+// - Missing headings
+```
+
+### Manual Testing
+```
+□ Can you navigate entire page with keyboard?
+□ Is tab order logical?
+□ Can you access all functionality?
+□ Are landmarks announced correctly?
+□ Do headings create good outline?
+□ Are form labels associated?
+□ Do buttons describe their action?
+□ Are dynamic updates announced?
+□ Can you complete main tasks?
+```
+
+## Developer Tools
+
+### Chrome DevTools
+```
+1. Open DevTools (F12)
+2. Elements panel
+3. Right-click > Inspect
+4. Accessibility tab shows:
+   - Computed properties
+   - ARIA attributes
+   - Name calculation
+```
+
+### Firefox Accessibility Inspector
+```
+1. Open DevTools
+2. Accessibility tab
+3. Shows accessibility tree
+4. Check color contrast
+5. Simulate vision deficiencies
+```
+
+## Best Practices
+
+### Meaningful Link Text
+```html
+<!-- Bad: Out of context -->
+<a href="/article">Read more</a>
+
+<!-- Good: Descriptive -->
+<a href="/article">
+  Read more about accessibility guidelines
+</a>
+
+<!-- Or aria-label -->
+<a href="/article" aria-label="Read article about accessibility">
+  Read more
+</a>
+```
+
+### Status Messages
+```html
+<!-- Use aria-live for status updates -->
+<div aria-live="polite" aria-atomic="true" class="sr-only">
+  Search results updated: 5 items found
+</div>
+
+<style>
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+</style>
+```
+
+<KeyTakeaway>
+Screen readers convert visual content to audio or braille. Test with NVDA or VoiceOver, ensure semantic HTML provides meaning, add ARIA when HTML isn't enough, and use live regions for dynamic updates. Regular screen reader testing reveals issues automated tools miss.
+</KeyTakeaway>

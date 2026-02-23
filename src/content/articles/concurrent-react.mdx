@@ -7,13 +7,343 @@ icon: "layers"
 description: "Understanding concurrent react and its applications in modern web development"
 difficulty: "advanced"
 tags: ["react","concurrency","fiber"]
-related: []
-resources: []
-status: "stub"
+related: ["react-hooks", "fiber-architecture", "suspense", "server-components"]
+resources:
+  - title: "React Concurrent Mode Documentation"
+    url: "https://react.dev/blog/2022/03/29/react-v18"
+  - title: "Understanding React 18 Concurrent Features"
+    url: "https://react.dev/blog/2021/12/17/react-conf-2021-recap"
+status: "published"
 ---
 
 <DefinitionBlock>
-Concurrent React is a concept in frontend engineering. This article is currently being written.
+Concurrent React is a set of features introduced in React 18 that allow React to prepare multiple versions of the UI simultaneously. This enables React to interrupt rendering work to handle high-priority updates, keep the UI responsive during heavy computations, and create better loading states.
 </DefinitionBlock>
 
-<StubNotice />
+## What is Concurrent React?
+
+Concurrent React fundamentally changes how React renders updates to the DOM. Before React 18, rendering was synchronous and blocking—once React started rendering, nothing could interrupt it until the entire component tree was processed. Concurrent React introduces the ability to:
+
+- **Interruptible rendering**: React can pause, resume, and abandon rendering work
+- **Priority-based updates**: React can prioritize user interactions over background work
+- **Concurrent features**: New APIs like `useTransition`, `useDeferredValue`, and Suspense improvements
+
+## Core Concepts
+
+### Interruptible Rendering
+
+In traditional React, rendering is synchronous. If a component takes 200ms to render, the browser can't respond to user input during that time. Concurrent React uses the Fiber architecture to break rendering into small units of work that can be interrupted.
+
+```javascript
+// Before React 18: Blocking render
+function SlowComponent() {
+  // This blocks the main thread for 200ms
+  const data = expensiveComputation();
+  return <div>{data}</div>;
+}
+
+// With Concurrent React: Interruptible
+function App() {
+  const [count, setCount] = useState(0);
+  const [items, setItems] = useState([]);
+  
+  // High priority update - interrupts rendering
+  const handleClick = () => {
+    setCount(c => c + 1); // This happens immediately
+  };
+  
+  // Low priority update - can be interrupted
+  const handleHeavyUpdate = () => {
+    startTransition(() => {
+      setItems(generateLargeList()); // This can be interrupted
+    });
+  };
+}
+```
+
+### Priority Levels
+
+React assigns different priorities to updates:
+
+1. **Immediate Priority**: User input (clicks, typing)
+2. **Normal Priority**: Regular state updates
+3. **Low Priority**: Background work, data fetching results
+4. **Idle Priority**: Non-essential work
+
+### Time Slicing
+
+Time slicing is the mechanism that makes concurrent rendering possible. React yields control back to the browser periodically, allowing it to handle high-priority work.
+
+```javascript
+// React internally splits work into small chunks
+// Each chunk runs for ~5ms before yielding
+function workLoop() {
+  while (nextUnitOfWork && !shouldYield()) {
+    nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
+  }
+  
+  if (nextUnitOfWork) {
+    // Yield to browser, schedule continuation
+    requestIdleCallback(workLoop);
+  }
+}
+```
+
+## Key APIs
+
+### useTransition
+
+The `useTransition` hook lets you mark state updates as non-urgent, keeping the UI responsive during heavy operations.
+
+```javascript
+import { useTransition, useState } from 'react';
+
+function TabContainer() {
+  const [isPending, startTransition] = useTransition();
+  const [tab, setTab] = useState('home');
+  
+  const selectTab = (nextTab) => {
+    // Urgent update - happens immediately
+    // startTransition marks the state update as low priority
+    startTransition(() => {
+      setTab(nextTab); // Can be interrupted by other updates
+    });
+  };
+  
+  return (
+    <div>
+      {isPending && <div>Loading...</div>}
+      <TabList onSelect={selectTab} currentTab={tab} />
+      <TabContent tab={tab} />
+    </div>
+  );
+}
+```
+
+**Key points:**
+- `isPending` tells you if the transition is ongoing
+- State updates inside `startTransition` can be interrupted
+- The UI stays responsive during the transition
+
+### useDeferredValue
+
+`useDeferredValue` lets you defer updating a part of the UI, similar to debouncing but integrated with React's rendering.
+
+```javascript
+import { useDeferredValue, useState } from 'react';
+
+function SearchResults() {
+  const [query, setQuery] = useState('');
+  // Defer the query value to avoid blocking typing
+  const deferredQuery = useDeferredValue(query);
+  
+  return (
+    <div>
+      {/* Updates immediately */}
+      <input 
+        value={query} 
+        onChange={e => setQuery(e.target.value)} 
+      />
+      {/* Can lag behind to keep input responsive */}
+      <SlowSearchResults query={deferredQuery} />
+    </div>
+  );
+}
+```
+
+### Suspense with Data Fetching
+
+React 18 enhances Suspense to work better with data fetching:
+
+```javascript
+import { Suspense } from 'react';
+
+function App() {
+  return (
+    <Suspense fallback={<Spinner />}>
+      {/* This component can start fetching data */}
+      {/* and suspend while waiting */}
+      <ProfileData />
+    </Suspense>
+  );
+}
+
+// ProfileData can suspend while fetching
+function ProfileData() {
+  // This will suspend the component
+  const user = useUserData(); // Throws a promise while loading
+  return <div>Hello, {user.name}</div>;
+}
+```
+
+## Enabling Concurrent Features
+
+To enable Concurrent React, use `createRoot` instead of `ReactDOM.render`:
+
+```javascript
+// Before React 18
+import ReactDOM from 'react-dom';
+ReactDOM.render(<App />, document.getElementById('root'));
+
+// React 18 and later
+import { createRoot } from 'react-dom/client';
+const root = createRoot(document.getElementById('root'));
+root.render(<App />);
+```
+
+## Practical Use Cases
+
+### 1. Keeping Search Responsive
+
+```javascript
+function SearchableList({ items }) {
+  const [filterText, setFilterText] = useState('');
+  const deferredFilterText = useDeferredValue(filterText);
+  
+  // Filter happens with deferred value
+  const filteredItems = useMemo(
+    () => items.filter(item => 
+      item.name.includes(deferredFilterText)
+    ),
+    [items, deferredFilterText]
+  );
+  
+  return (
+    <>
+      <input
+        value={filterText}
+        onChange={e => setFilterText(e.target.value)}
+        placeholder="Search..."
+      />
+      <ItemList items={filteredItems} />
+    </>
+  );
+}
+```
+
+### 2. Smooth Tab Switching
+
+```javascript
+function TabPanel({ tabs }) {
+  const [selectedTab, setSelectedTab] = useState(tabs[0]);
+  const [isPending, startTransition] = useTransition();
+  
+  return (
+    <div>
+      <div style={{ opacity: isPending ? 0.7 : 1 }}>
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => {
+              startTransition(() => {
+                setSelectedTab(tab);
+              });
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+      <div>
+        <SlowTabContent tab={selectedTab} />
+      </div>
+    </div>
+  );
+}
+```
+
+### 3. Progressive Loading
+
+```javascript
+function Dashboard() {
+  return (
+    <div>
+      {/* Critical content loads first */}
+      <Header />
+      
+      {/* Secondary content can be deferred */}
+      <Suspense fallback={<Skeleton />}>
+        <Sidebar />
+      </Suspense>
+      
+      {/* Heavy analytics can load last */}
+      <Suspense fallback={null}>
+        <Analytics />
+      </Suspense>
+    </div>
+  );
+}
+```
+
+## Best Practices
+
+1. **Use transitions for non-urgent updates**: Wrap expensive state updates in `startTransition`
+2. **Defer expensive computations**: Use `useDeferredValue` for derived state that depends on rapid user input
+3. **Structure for Suspense**: Design components that can suspend independently
+4. **Don't overuse**: Not every update needs to be concurrent—use it for performance bottlenecks
+5. **Test with React DevTools**: Use the Profiler to identify where concurrency helps
+
+## Common Pitfalls
+
+```javascript
+// ❌ Don't use transitions for urgent updates
+startTransition(() => {
+  setIsModalOpen(true); // User expects immediate feedback
+});
+
+// ❌ Don't forget to handle pending state
+startTransition(() => {
+  setData(newData);
+});
+// Without isPending check, UI might feel unresponsive
+
+// ✅ Good: Use for heavy computations
+startTransition(() => {
+  setFilteredList(filterLargeArray(query));
+});
+
+// ✅ Good: Provide feedback during transition
+{isPending && <LoadingIndicator />}
+```
+
+## How It Works Under the Hood
+
+Concurrent React builds on the Fiber architecture:
+
+1. **Work-in-progress trees**: React maintains two trees (current and work-in-progress)
+2. **Lanes**: A priority system that categorizes updates
+3. **Work loop**: Processes units of work, yielding when necessary
+4. **Commit phase**: Only happens when work is complete and not interrupted
+
+```javascript
+// Simplified conceptual model
+function performConcurrentWork() {
+  while (hasWork && !shouldYieldToHost()) {
+    const next = workInProgress;
+    workInProgress = performUnitOfWork(next);
+  }
+  
+  if (workInProgress) {
+    // Schedule continuation
+    scheduleCallback(performConcurrentWork);
+  } else {
+    // Complete and commit
+    commitRoot();
+  }
+}
+```
+
+## Transition from Legacy React
+
+| Feature | Legacy React | Concurrent React |
+|---------|--------------|------------------|
+| Rendering | Synchronous, blocking | Interruptible |
+| Updates | All same priority | Priority-based |
+| API | `ReactDOM.render` | `createRoot` |
+| Suspense | Limited support | Full support |
+| useTransition | Not available | Available |
+| useDeferredValue | Not available | Available |
+
+<KeyTakeaway>
+Concurrent React enables interruptible rendering, allowing React to prioritize urgent updates (like user input) over background work. Key APIs include `useTransition` for marking updates as non-urgent and `useDeferredValue` for deferring expensive computations. Enable it by using `createRoot` instead of `ReactDOM.render`.
+</KeyTakeaway>

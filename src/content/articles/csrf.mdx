@@ -1,19 +1,303 @@
 ---
 title: "CSRF Protection"
 slug: "csrf"
-subtitle: "Deep dive into csrf protection"
+subtitle: "Prevent cross-site request forgery attacks"
 category: "security"
 icon: "lock"
-description: "Understanding csrf protection and its applications in modern web development"
+description: "Protect against CSRF attacks using tokens, SameSite cookies, and other security measures"
 difficulty: "intermediate"
-tags: ["security","csrf","tokens"]
-related: []
-resources: []
-status: "stub"
+tags: ["security","csrf","tokens","cookies"]
+related: ["xss","https","jwt"]
+resources:
+  - title: "OWASP - CSRF"
+    url: "https://owasp.org/www-community/attacks/csrf"
+  - title: "MDN - SameSite Cookies"
+    url: "https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Set-Cookie/SameSite"
+status: "published"
 ---
 
 <DefinitionBlock>
-CSRF Protection is a concept in frontend engineering. This article is currently being written.
+Cross-Site Request Forgery (CSRF) is an attack where a malicious website tricks a user's browser into performing unwanted actions on a trusted site where the user is authenticated. CSRF attacks exploit the fact that browsers automatically send cookies with every request to a domain.
 </DefinitionBlock>
 
-<StubNotice />
+## How CSRF Works
+
+### The Attack
+```
+1. User logs into bank.com
+   - Receives authentication cookie
+
+2. User visits malicious.com
+   - Without logging out of bank.com
+
+3. malicious.com contains:
+   <form action="https://bank.com/transfer" method="POST">
+     <input type="hidden" name="to" value="attacker">
+     <input type="hidden" name="amount" value="10000">
+   </form>
+   <script>document.forms[0].submit()</script>
+
+4. Browser automatically includes bank.com cookie
+5. Bank processes transfer as if user initiated it
+```
+
+## Protection Methods
+
+### 1. CSRF Tokens (Synchronizer Token Pattern)
+```javascript
+// Server generates token
+const csrfToken = crypto.randomBytes(32).toString('hex');
+req.session.csrfToken = csrfToken;
+
+// Include in HTML form
+<form action="/transfer" method="POST">
+  <input type="hidden" name="_csrf" value="{{csrfToken}}">
+  <input type="text" name="to">
+  <input type="number" name="amount">
+  <button type="submit">Transfer</button>
+</form>
+
+// Server validates
+app.post('/transfer', (req, res) => {
+  if (req.body._csrf !== req.session.csrfToken) {
+    return res.status(403).send('Invalid CSRF token');
+  }
+  // Process transfer
+});
+```
+
+### 2. Double Submit Cookie
+```javascript
+// Server sets cookie with random token
+res.cookie('csrf_token', randomToken, {
+  httpOnly: false, // JavaScript can read
+  secure: true,
+  sameSite: 'Strict'
+});
+
+// JavaScript reads cookie and sends in header
+fetch('/api/transfer', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'X-CSRF-Token': getCookie('csrf_token') // Read from cookie
+  },
+  body: JSON.stringify({ to, amount })
+});
+
+// Server validates header matches cookie
+app.post('/api/transfer', (req, res) => {
+  if (req.headers['x-csrf-token'] !== req.cookies.csrf_token) {
+    return res.status(403).send('CSRF validation failed');
+  }
+  // Process
+});
+```
+
+### 3. SameSite Cookies (Modern Approach)
+```javascript
+// Set-Cookie with SameSite attribute
+res.cookie('session', token, {
+  httpOnly: true,
+  secure: true,
+  sameSite: 'Strict' // or 'Lax'
+});
+```
+
+```
+SameSite Options:
+
+Strict: Cookie never sent in cross-site requests
+        Most secure, but breaks some flows
+
+Lax:    Cookie sent for top-level navigation GET requests
+        Good balance of security and usability
+
+None:   Cookie sent with all requests
+        Must use with Secure attribute
+        Not recommended without additional CSRF protection
+```
+
+## Implementation Examples
+
+### Express.js with csurf
+```javascript
+const csurf = require('csurf');
+
+// Setup middleware
+const csrfProtection = csurf({
+  cookie: {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'Strict'
+  }
+});
+
+// Apply to routes
+app.get('/form', csrfProtection, (req, res) => {
+  res.render('form', { csrfToken: req.csrfToken() });
+});
+
+app.post('/submit', csrfProtection, (req, res) => {
+  // Token automatically validated
+  res.send('Success');
+});
+
+// Error handler
+app.use((err, req, res, next) => {
+  if (err.code !== 'EBADCSRFTOKEN') return next(err);
+  res.status(403).send('Invalid CSRF token');
+});
+```
+
+### React + API
+```javascript
+// Custom hook for CSRF token
+function useCSRFToken() {
+  const [token, setToken] = useState(null);
+  
+  useEffect(() => {
+    fetch('/api/csrf-token')
+      .then(res => res.json())
+      .then(data => setToken(data.token));
+  }, []);
+  
+  return token;
+}
+
+// Include in requests
+function TransferForm() {
+  const csrfToken = useCSRFToken();
+  
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    
+    await fetch('/api/transfer', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken
+      },
+      credentials: 'include', // Send cookies
+      body: JSON.stringify({ to, amount })
+    });
+  };
+  
+  return <form onSubmit={handleSubmit}>...</form>;
+}
+```
+
+## Best Practices
+
+### 1. SameSite=Lax as Baseline
+```javascript
+// Modern browsers support SameSite
+// Lax protects against POST CSRF while allowing normal navigation
+
+app.use(cookieSession({
+  name: 'session',
+  httpOnly: true,
+  secure: true,
+  sameSite: 'lax' // Default in modern browsers
+}));
+```
+
+### 2. Additional Token for Sensitive Actions
+```javascript
+// Even with SameSite, use tokens for:
+// - State-changing operations
+// - Financial transactions
+// - Account modifications
+
+// SameSite doesn't protect against:
+// - Subdomain attacks (if not Strict)
+// - XSS (use httpOnly cookies)
+```
+
+### 3. Validate Origin/Referer
+```javascript
+// Additional validation
+app.post('/sensitive', (req, res) => {
+  const origin = req.headers.origin;
+  const referer = req.headers.referer;
+  
+  if (!origin || !origin.includes('trusted-domain.com')) {
+    return res.status(403).send('Invalid origin');
+  }
+  
+  // Also check CSRF token
+  // ...
+});
+```
+
+### 4. Custom Request Headers
+```javascript
+// AJAX requests with custom header
+fetch('/api/action', {
+  headers: {
+    'X-Requested-With': 'XMLHttpRequest'
+  }
+});
+
+// Simple requests (form posts) can't set custom headers
+// So attackers can't forge these requests cross-origin
+```
+
+## Common Mistakes
+
+```javascript
+// ❌ GET requests that modify state
+app.get('/delete-account', (req, res) => {
+  // Dangerous! Can be triggered by <img> tag
+});
+
+// ✅ Use POST/PUT/DELETE for actions
+app.post('/delete-account', (req, res) => {
+  // Protected by CORS and CSRF measures
+});
+
+// ❌ Missing CSRF protection on state changes
+app.post('/change-email', (req, res) => {
+  // No token check!
+});
+
+// ❌ Predictable tokens
+const token = user.id + timestamp; // Easy to guess
+
+// ✅ Cryptographically secure tokens
+const token = crypto.randomBytes(32).toString('hex');
+```
+
+## Testing CSRF Protection
+
+```javascript
+// Attempt CSRF attack in tests
+describe('CSRF Protection', () => {
+  it('should reject requests without token', async () => {
+    const response = await request(app)
+      .post('/api/transfer')
+      .send({ to: 'attacker', amount: 1000 })
+      .set('Cookie', 'session=valid-session');
+    
+    expect(response.status).toBe(403);
+  });
+  
+  it('should accept requests with valid token', async () => {
+    // Get token first
+    const tokenRes = await request(app).get('/api/csrf-token');
+    const token = tokenRes.body.token;
+    
+    const response = await request(app)
+      .post('/api/transfer')
+      .send({ to: 'friend', amount: 100 })
+      .set('X-CSRF-Token', token)
+      .set('Cookie', 'session=valid-session');
+    
+    expect(response.status).toBe(200);
+  });
+});
+```
+
+<KeyTakeaway>
+Protect against CSRF using SameSite=Lax cookies as baseline, add CSRF tokens for sensitive actions, validate Origin/Referer headers, and use POST for state-changing operations. Modern browsers with SameSite=Lax provide good default protection, but defense in depth is recommended for critical applications.
+</KeyTakeaway>

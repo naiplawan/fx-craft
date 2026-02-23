@@ -63,10 +63,6 @@ Hydration isn't free. It requires:
 
 For large applications, hydration can take hundreds of milliseconds or even seconds, creating a period where the page **looks** interactive but isn't yet.
 
-<KeyTakeaway>
-Hydration is necessary for SSR applications, but it comes with a performance cost. The page isn't truly interactive until hydration completes. Techniques like partial hydration, islands architecture, and streaming can help reduce this cost.
-</KeyTakeaway>
-
 ## Hydration Strategies
 
 ### Full Hydration
@@ -99,3 +95,7 @@ The page is composed of "islands" of interactivity surrounded by static content.
 ## The Future: Resumability
 
 Newer approaches like **resumability** (used in Qwik) aim to eliminate hydration entirely. Instead of re-executing the application on the client, the server serializes the application's state and event listeners, allowing the client to "resume" where the server left off without re-running the entire app.
+
+<KeyTakeaway>
+Hydration is necessary for SSR applications, but it comes with a performance cost. The page isn't truly interactive until hydration completes. Techniques like partial hydration, islands architecture, and streaming can help reduce this cost.
+</KeyTakeaway>

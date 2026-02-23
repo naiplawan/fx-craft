@@ -1,19 +1,301 @@
 ---
 title: "Content Security Policy"
 slug: "csp"
-subtitle: "Deep dive into content security policy"
+subtitle: "Prevent XSS and data injection attacks"
 category: "security"
 icon: "shield-check"
-description: "Understanding content security policy and its applications in modern web development"
+description: "Implement Content Security Policy headers to mitigate XSS attacks and control resource loading"
 difficulty: "intermediate"
-tags: ["security","xss","headers"]
-related: []
-resources: []
-status: "stub"
+tags: ["security","xss","headers","csp"]
+related: ["xss","https","sri"]
+resources:
+  - title: "MDN - CSP"
+    url: "https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP"
+  - title: "CSP Quick Reference"
+    url: "https://content-security-policy.com/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Content Security Policy is a concept in frontend engineering. This article is currently being written.
+Content Security Policy (CSP) is a security layer that helps prevent Cross-Site Scripting (XSS) and data injection attacks by specifying which dynamic resources are allowed to load. It provides a way for administrators to control resources the browser is allowed to load for a given page.
 </DefinitionBlock>
 
-<StubNotice />
+## How CSP Works
+
+### Basic Header
+```http
+Content-Security-Policy: default-src 'self'
+```
+
+This tells the browser:
+- Only load resources from the same origin
+- Block inline scripts
+- Block eval()
+- Block external resources
+
+### Report-Only Mode
+```http
+Content-Security-Policy-Report-Only: default-src 'self'; report-uri /csp-report
+```
+
+- Violations are reported but not blocked
+- Useful for testing before enforcing
+
+## CSP Directives
+
+### Script Sources
+```http
+Content-Security-Policy:
+  script-src 'self' https://cdn.example.com;
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data: https:;
+  font-src 'self' https://fonts.gstatic.com;
+  connect-src 'self' https://api.example.com;
+  media-src 'self';
+  object-src 'none';
+  frame-src 'self' https://trusted-site.com;
+```
+
+### Common Directives
+```
+default-src:     Fallback for other directives
+script-src:      JavaScript sources
+style-src:       CSS sources
+img-src:         Image sources
+font-src:        Font sources
+connect-src:     XHR, WebSocket, EventSource
+media-src:       Video/audio sources
+frame-src:       Frame/iframe sources
+object-src:      Flash, plugins
+base-uri:        Base URL for relative URLs
+form-action:     Form submission targets
+upgrade-insecure-requests: Force HTTPS
+```
+
+## Source Values
+
+### Keywords
+```http
+'self':            Same origin only
+'none':            Block all
+'unsafe-inline':   Allow inline scripts/styles
+'unsafe-eval':     Allow eval() and new Function()
+'unsafe-hashes':   Allow specific inline scripts via hash
+'strict-dynamic':  Trust scripts loaded by trusted scripts
+'nonce-<value>':  Specific inline script allowed
+```
+
+### Examples
+```http
+Content-Security-Policy:
+  # Allow same origin + specific CDN
+  script-src 'self' https://cdn.jsdelivr.net;
+  
+  # Block all plugins
+  object-src 'none';
+  
+  # Allow inline styles (needed for some frameworks)
+  style-src 'self' 'unsafe-inline';
+  
+  # Data URIs for images
+  img-src 'self' data:;
+```
+
+## Implementing CSP
+
+### Strict Policy (Recommended)
+```http
+Content-Security-Policy:
+  default-src 'none';
+  script-src 'self';
+  style-src 'self';
+  img-src 'self';
+  font-src 'self';
+  connect-src 'self';
+  frame-ancestors 'none';
+  base-uri 'self';
+  form-action 'self';
+```
+
+### For React/Vue/Angular Apps
+```http
+Content-Security-Policy:
+  default-src 'self';
+  script-src 'self' 'unsafe-inline' 'unsafe-eval';
+  style-src 'self' 'unsafe-inline';
+  img-src 'self' data: blob:;
+  font-src 'self' data:;
+  connect-src 'self' https://api.example.com;
+```
+
+### Inline Scripts
+```html
+<!-- Nonce approach (preferred) -->
+<meta http-equiv="Content-Security-Policy" 
+      content="script-src 'nonce-abc123'">
+
+<script nonce="abc123">
+  console.log('Allowed');
+</script>
+
+<script>
+  console.log('Blocked - no nonce');
+</script>
+```
+
+```html
+<!-- Hash approach -->
+<meta http-equiv="Content-Security-Policy" 
+      content="script-src 'sha256-abc...def='">
+
+<script>
+  console.log('Allowed if hash matches');
+</script>
+```
+
+## Server Configuration
+
+### Express.js
+```javascript
+const helmet = require('helmet');
+
+app.use(helmet.contentSecurityPolicy({
+  directives: {
+    defaultSrc: ["'self'"],
+    scriptSrc: ["'self'", "'unsafe-inline'"],
+    styleSrc: ["'self'", "'unsafe-inline'"],
+    imgSrc: ["'self'", "data:", "https:"],
+    connectSrc: ["'self'", "https://api.example.com"],
+  },
+}));
+```
+
+### Nginx
+```nginx
+add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';" always;
+```
+
+### HTML Meta Tag
+```html
+<meta http-equiv="Content-Security-Policy" 
+      content="default-src 'self'; script-src 'self'">
+```
+
+## CSP Violations
+
+### Browser Console
+```
+Refused to load the script 'https://evil.com/malware.js' 
+because it violates the following Content Security Policy directive: 
+"script-src 'self'".
+```
+
+### Reporting
+```http
+Content-Security-Policy:
+  default-src 'self';
+  report-uri /csp-report;
+  report-to csp-endpoint;
+
+# Modern approach with Reporting API
+Report-To: {
+  "group": "csp-endpoint",
+  "max_age": 10886400,
+  "endpoints": [{
+    "url": "https://example.com/csp-report"
+  }]
+}
+```
+
+### Report Handler
+```javascript
+// Server-side report collector
+app.post('/csp-report', express.json({ type: 'application/csp-report' }), (req, res) => {
+  const report = req.body['csp-report'];
+  
+  console.log('CSP Violation:', {
+    documentUri: report['document-uri'],
+    blockedUri: report['blocked-uri'],
+    violatedDirective: report['violated-directive'],
+    originalPolicy: report['original-policy']
+  });
+  
+  res.status(204).send();
+});
+```
+
+## Best Practices
+
+### 1. Start with Report-Only
+```http
+Content-Security-Policy-Report-Only: default-src 'self'; report-uri /csp-report
+```
+
+Monitor reports for a week before enforcing.
+
+### 2. Use Nonces for Inline Scripts
+```javascript
+// Generate unique nonce per request
+const nonce = crypto.randomBytes(16).toString('base64');
+
+// Pass to template
+res.render('page', { nonce });
+```
+
+```html
+<script nonce="<%= nonce %>">
+  // This inline script is allowed
+</script>
+```
+
+### 3. Avoid 'unsafe-inline' and 'unsafe-eval'
+```http
+❌ script-src 'self' 'unsafe-inline' 'unsafe-eval';
+
+✅ script-src 'self' 'nonce-abc123';
+✅ script-src 'self' 'strict-dynamic';
+```
+
+### 4. Frame Ancestors
+```http
+# Prevent clickjacking
+frame-ancestors 'none';
+
+# Or allow specific sites
+frame-ancestors 'self' https://trusted-site.com;
+```
+
+### 5. Upgrade Insecure Requests
+```http
+Content-Security-Policy: upgrade-insecure-requests;
+
+# Forces all http:// to https://
+```
+
+## Common Issues
+
+### Third-Party Scripts
+```http
+# Google Analytics
+script-src 'self' https://www.googletagmanager.com https://www.google-analytics.com;
+img-src 'self' https://www.google-analytics.com;
+
+# Stripe
+script-src 'self' https://js.stripe.com;
+frame-src 'self' https://js.stripe.com https://hooks.stripe.com;
+connect-src 'self' https://api.stripe.com;
+```
+
+### Web Workers
+```http
+worker-src 'self' blob:;
+```
+
+### WebSockets
+```http
+connect-src 'self' wss://socket.example.com;
+```
+
+<KeyTakeaway>
+CSP is a powerful defense against XSS attacks. Start with report-only mode, use nonces for inline scripts instead of 'unsafe-inline', and whitelist only necessary domains. Regularly review violation reports to refine your policy. CSP works best when combined with other security headers like X-Frame-Options and HSTS.
+</KeyTakeaway>

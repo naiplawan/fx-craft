@@ -1,19 +1,307 @@
 ---
 title: "Mutation Observer"
 slug: "mutation-observer"
-subtitle: "Deep dive into mutation observer"
+subtitle: "React to DOM changes efficiently"
 category: "browser-apis"
 icon: "git-commit"
-description: "Understanding mutation observer and its applications in modern web development"
+description: "Monitor DOM changes with the Mutation Observer API for building reactive components and debugging"
 difficulty: "advanced"
-tags: ["browser","api","dom"]
-related: []
-resources: []
-status: "stub"
+tags: ["browser","api","dom","debugging"]
+related: ["intersection-observer","resize-observer"]
+resources:
+  - title: "MDN - MutationObserver"
+    url: "https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver"
+  - title: "JavaScript.info - MutationObserver"
+    url: "https://javascript.info/mutation-observer"
+status: "published"
 ---
 
 <DefinitionBlock>
-Mutation Observer is a concept in frontend engineering. This article is currently being written.
+MutationObserver provides developers a way to react to changes in the DOM. It monitors the DOM tree for changes and triggers callbacks when mutations occur, providing a performant alternative to deprecated DOM mutation events.
 </DefinitionBlock>
 
-<StubNotice />
+## Basic Usage
+
+### Creating an Observer
+```javascript
+const observer = new MutationObserver((mutations, observer) => {
+  mutations.forEach(mutation => {
+    console.log('Mutation type:', mutation.type);
+    console.log('Target:', mutation.target);
+    
+    if (mutation.type === 'childList') {
+      console.log('Added:', mutation.addedNodes);
+      console.log('Removed:', mutation.removedNodes);
+    }
+    
+    if (mutation.type === 'attributes') {
+      console.log('Attribute:', mutation.attributeName);
+      console.log('Old value:', mutation.oldValue);
+    }
+  });
+});
+
+// Start observing
+observer.observe(targetNode, {
+  childList: true,      // Watch for child additions/removals
+  attributes: true,     // Watch for attribute changes
+  characterData: true,  // Watch for text content changes
+  subtree: true,        // Watch descendants too
+  attributeOldValue: true,
+  characterDataOldValue: true
+});
+```
+
+## Mutation Types
+
+### Child List Changes
+```javascript
+const container = document.getElementById('container');
+
+const observer = new MutationObserver((mutations) => {
+  mutations.forEach(mutation => {
+    if (mutation.type === 'childList') {
+      mutation.addedNodes.forEach(node => {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          console.log('Element added:', node.tagName);
+        }
+      });
+      
+      mutation.removedNodes.forEach(node => {
+        console.log('Element removed:', node);
+      });
+    }
+  });
+});
+
+observer.observe(container, { childList: true });
+
+// Changes that will be detected:
+container.appendChild(document.createElement('div'));
+container.removeChild(container.firstChild);
+container.innerHTML = '<p>New content</p>';
+```
+
+### Attribute Changes
+```javascript
+const observer = new MutationObserver((mutations) => {
+  mutations.forEach(mutation => {
+    if (mutation.type === 'attributes') {
+      console.log(`Attribute ${mutation.attributeName} changed`);
+      console.log('Old value:', mutation.oldValue);
+      console.log('New value:', mutation.target.getAttribute(mutation.attributeName));
+    }
+  });
+});
+
+observer.observe(element, {
+  attributes: true,
+  attributeOldValue: true,
+  attributeFilter: ['class', 'id', 'data-*'] // Only specific attributes
+});
+```
+
+## Practical Use Cases
+
+### Form Validation Feedback
+```javascript
+const form = document.querySelector('form');
+
+const observer = new MutationObserver((mutations) => {
+  mutations.forEach(mutation => {
+    if (mutation.target.classList.contains('error')) {
+      showErrorMessage(mutation.target);
+    }
+  });
+});
+
+form.querySelectorAll('input').forEach(input => {
+  observer.observe(input, { 
+    attributes: true, 
+    attributeFilter: ['class'] 
+  });
+});
+```
+
+### Auto-Resize Textarea
+```javascript
+function autoResize(textarea) {
+  const resize = () => {
+    textarea.style.height = 'auto';
+    textarea.style.height = textarea.scrollHeight + 'px';
+  };
+  
+  const observer = new MutationObserver((mutations) => {
+    mutations.forEach(mutation => {
+      if (mutation.type === 'characterData') {
+        resize();
+      }
+    });
+  });
+  
+  observer.observe(textarea, {
+    characterData: true,
+    subtree: true
+  });
+  
+  textarea.addEventListener('input', resize);
+}
+```
+
+### Debug Tool
+```javascript
+function watchElement(element, label = 'Element') {
+  const observer = new MutationObserver((mutations) => {
+    console.group(`${label} mutated:`);
+    mutations.forEach(mutation => {
+      console.log('Type:', mutation.type);
+      console.log('Target:', mutation.target);
+      if (mutation.addedNodes.length) {
+        console.log('Added:', mutation.addedNodes);
+      }
+      if (mutation.removedNodes.length) {
+        console.log('Removed:', mutation.removedNodes);
+      }
+    });
+    console.groupEnd();
+  });
+  
+  observer.observe(element, {
+    childList: true,
+    attributes: true,
+    characterData: true,
+    subtree: true
+  });
+  
+  return () => observer.disconnect();
+}
+
+// Usage
+const cleanup = watchElement(document.body, 'Body');
+// ...later
+cleanup();
+```
+
+## Advanced Patterns
+
+### Batch Processing
+```javascript
+const pendingMutations = [];
+let timeoutId = null;
+
+const observer = new MutationObserver((mutations) => {
+  pendingMutations.push(...mutations);
+  
+  clearTimeout(timeoutId);
+  timeoutId = setTimeout(() => {
+    processBatch(pendingMutations);
+    pendingMutations.length = 0;
+  }, 100); // Batch over 100ms
+});
+
+function processBatch(mutations) {
+  // Process all mutations at once
+  const addedElements = new Set();
+  
+  mutations.forEach(mutation => {
+    mutation.addedNodes.forEach(node => {
+      if (node.nodeType === Node.ELEMENT_NODE) {
+        addedElements.add(node);
+      }
+    });
+  });
+  
+  // Do something with all added elements
+  addedElements.forEach(initializeElement);
+}
+```
+
+### Reacting to Specific Changes
+```javascript
+function waitForElement(selector, parent = document.body) {
+  return new Promise((resolve) => {
+    // Check if already exists
+    const element = parent.querySelector(selector);
+    if (element) {
+      resolve(element);
+      return;
+    }
+    
+    const observer = new MutationObserver((mutations) => {
+      const element = parent.querySelector(selector);
+      if (element) {
+        observer.disconnect();
+        resolve(element);
+      }
+    });
+    
+    observer.observe(parent, { childList: true, subtree: true });
+  });
+}
+
+// Usage
+waitForElement('.dynamic-content').then(el => {
+  console.log('Element appeared:', el);
+});
+```
+
+## Performance Considerations
+
+### Scope Observation
+```javascript
+// Bad: Observing entire document
+observer.observe(document.body, { 
+  childList: true, 
+  subtree: true 
+});
+
+// Good: Observe specific container
+observer.observe(specificContainer, { 
+  childList: true 
+});
+
+// Better: Use attributeFilter
+observer.observe(element, {
+  attributes: true,
+  attributeFilter: ['class', 'style']
+});
+```
+
+### Disconnect When Done
+```javascript
+const observer = new MutationObserver(callback);
+observer.observe(target, config);
+
+// Always disconnect when not needed
+function cleanup() {
+  observer.disconnect();
+}
+
+// In frameworks
+useEffect(() => {
+  const observer = new MutationObserver(callback);
+  observer.observe(ref.current, config);
+  
+  return () => observer.disconnect();
+}, []);
+```
+
+## Limitations
+
+```javascript
+// Things MutationObserver cannot detect:
+
+// 1. CSS pseudo-class changes (:hover, :focus)
+// 2. CSS property changes
+// 3. Form input value changes (use 'input' event)
+// 4. Scroll position changes
+// 5. Window resize
+
+// For CSS changes, use getComputedStyle polling or ResizeObserver
+// For form values, use input/change events
+// For scroll/resize, use scroll/resize events or IntersectionObserver
+```
+
+<KeyTakeaway>
+MutationObserver is powerful for detecting DOM changes but should be used sparingly due to performance implications. Always scope observations tightly, disconnect when done, and batch process mutations. Consider if your use case could be solved with events or other APIs instead.
+</KeyTakeaway>

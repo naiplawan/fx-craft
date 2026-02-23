@@ -1,19 +1,314 @@
 ---
 title: "Partial Hydration"
 slug: "partial-hydration"
-subtitle: "Deep dive into partial hydration"
+subtitle: "Hydrate only what needs interactivity"
 category: "rendering"
 icon: "droplet"
-description: "Understanding partial hydration and its applications in modern web development"
+description: "Reduce JavaScript overhead by selectively hydrating only interactive components while keeping static parts server-rendered"
 difficulty: "advanced"
-tags: ["hydration","performance","ssr"]
-related: []
-resources: []
-status: "stub"
+tags: ["hydration","performance","ssr","optimization"]
+related: ["hydration","islands-architecture","server-components"]
+resources:
+  - title: "React Server Components"
+    url: "https://react.dev/blog/2020/12/21/data-fetching-with-react-server-components"
+  - title: "Astro Partial Hydration"
+    url: "https://docs.astro.build/en/concepts/islands/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Partial Hydration is a concept in frontend engineering. This article is currently being written.
+Partial hydration is an optimization technique where only specific parts of a server-rendered page are hydrated with JavaScript, while the rest remains static HTML. This significantly reduces the amount of JavaScript shipped to the browser and improves initial page load performance.
 </DefinitionBlock>
 
-<StubNotice />
+## The Problem
+
+```javascript
+// Traditional SSR + Hydration
+// Entire app hydrates even if most of it is static
+
+function Page() {
+  return (
+    <div>
+      <Header />              <!-- Needs JS -->
+      <StaticContent />       <!-- No JS needed! -->
+      <StaticSidebar />       <!-- No JS needed! -->
+      <InteractiveWidget />   <!-- Needs JS -->
+      <Footer />              <!-- No JS needed! -->
+    </div>
+  );
+}
+// Result: 100KB+ JavaScript for entire page
+```
+
+## Partial Hydration Solution
+
+```javascript
+// Only hydrate interactive components
+function Page() {
+  return (
+    <div>
+      <Header />              <!-- Hydrated -->
+      <StaticContent />       <!-- Static HTML only -->
+      <StaticSidebar />       <!-- Static HTML only -->
+      <InteractiveWidget />   <!-- Hydrated -->
+      <Footer />              <!-- Static HTML only -->
+    </div>
+  );
+}
+// Result: 20KB JavaScript only for interactive parts
+```
+
+## Implementation Approaches
+
+### 1. React Server Components (Next.js App Router)
+```javascript
+// Server Component (default) - No hydration
+async function BlogPost({ id }) {
+  const post = await getPost(id); // Server-side fetch
+  
+  return (
+    <article>
+      <h1>{post.title}</h1>
+      <div dangerouslySetInnerHTML={{ __html: post.content }} />
+      <!-- Static, no JS shipped -->
+      
+      <InteractiveComments postId={id} />
+    </article>
+  );
+}
+
+// Client Component - Hydrated
+'use client';
+
+function InteractiveComments({ postId }) {
+  const [comments, setComments] = useState([]);
+  
+  useEffect(() => {
+    fetchComments(postId).then(setComments);
+  }, [postId]);
+  
+  return <CommentList comments={comments} />;
+}
+```
+
+### 2. Astro Framework
+```astro
+---
+// Server-side code (never sent to client)
+const posts = await fetch('https://api.example.com/posts');
+---
+
+<!-- Static HTML -->
+<h1>Blog Posts</h1>
+<ul>
+  {posts.map(post => (
+    <li>{post.title}</li>
+  ))}
+</ul>
+
+<!-- Hydrated component -->
+<InteractiveSearch client:load />
+
+<!-- Visible in viewport -->
+<ImageCarousel client:visible />
+
+<!-- On media query match -->
+<MobileMenu client:media="(max-width: 768px)" />
+```
+
+### 3. Manual Implementation
+```javascript
+// Hydration boundaries
+function Page() {
+  return (
+    <div>
+      <!-- Static -->
+      <header>...</header>
+      
+      <!-- Hydrated on load -->
+      <div id="search-root"></div>
+      
+      <!-- Static -->
+      <main>...</main>
+      
+      <!-- Hydrated on interaction -->
+      <div id="modal-root"></div>
+    </div>
+  );
+}
+
+// Hydrate specific roots
+hydrateRoot(
+  document.getElementById('search-root'),
+  <SearchWidget />
+);
+
+// Lazy hydration
+document.getElementById('modal-trigger')
+  .addEventListener('click', () => {
+    import('./Modal').then(({ Modal }) => {
+      hydrateRoot(
+        document.getElementById('modal-root'),
+        <Modal />
+      );
+    });
+  });
+```
+
+## Hydration Directives
+
+### Astro Directives
+```astro
+<!-- client:load - Hydrate immediately -->
+<Counter client:load />
+
+<!-- client:idle - Hydrate when browser idle -->
+<Comments client:idle />
+
+<!-- client:visible - Hydrate when scrolled into view -->
+<ImageCarousel client:visible />
+
+<!-- client:media - Hydrate on media query match -->
+<Sidebar client:media="(min-width: 1024px)" />
+
+<!-- client:only - Skip SSR, client-only -->
+<HeavyChart client:only="react" />
+```
+
+### Next.js Dynamic Imports
+```javascript
+import dynamic from 'next/dynamic';
+
+// No SSR, hydrate on load
+const HeavyChart = dynamic(() => import('../components/Chart'), {
+  ssr: false,
+});
+
+// Lazy load when needed
+const Modal = dynamic(() => import('../components/Modal'), {
+  loading: () => <p>Loading...</p>,
+});
+```
+
+## Performance Benefits
+
+### Before (Full Hydration)
+```
+HTML: 50KB
+JS Bundle: 200KB
+Hydration Time: 500ms
+Total: 250KB + processing
+```
+
+### After (Partial Hydration)
+```
+HTML: 50KB
+JS Bundle: 30KB (only interactive parts)
+Hydration Time: 80ms
+Total: 80KB + minimal processing
+```
+
+## Use Cases
+
+### Content-Heavy Sites
+```javascript
+// Blogs, documentation, marketing sites
+// Mostly static content with some interactivity
+
+<article>
+  <!-- Static content -->
+  <Markdown content={post.body} />
+  
+  <!-- Interactive parts only -->
+  <LikeButton client:load postId={post.id} />
+  <ShareButtons client:visible />
+  <CommentSection client:idle postId={post.id} />
+</article>
+```
+
+### E-commerce
+```javascript
+// Product pages
+// Static info + interactive elements
+
+<div>
+  <!-- Static -->
+  <h1>{product.name}</h1>
+  <img src={product.image} />
+  <p>{product.description}</p>
+  
+  <!-- Interactive -->
+  <AddToCartButton client:load product={product} />
+  <ColorPicker client:load options={product.colors} />
+  <ReviewsSection client:visible productId={product.id} />
+</div>
+```
+
+## Best Practices
+
+### 1. Start Static
+```javascript
+// Default to static
+// Only add hydration when needed
+
+// Good
+function Header() {
+  return (
+    <header>
+      <a href="/">Logo</a>
+      <nav>...</nav>
+    </header>
+  );
+}
+
+// Add 'use client' only when needed
+'use client';
+
+function Header() {
+  const [isOpen, setIsOpen] = useState(false); // Needs hydration
+  // ...
+}
+```
+
+### 2. Granular Boundaries
+```javascript
+// Small, focused interactive components
+// Rather than large hydrated sections
+
+<!-- Good -->
+<article>
+  <StaticContent />
+  <LikeButton client:load />
+  <ShareDropdown client:load />
+</article>
+
+<!-- Bad -->
+<article client:load>  <!-- Too broad -->
+  <Content />
+  <LikeButton />
+  <ShareDropdown />
+</article>
+```
+
+### 3. Progressive Enhancement
+```javascript
+// Works without JavaScript
+// Enhanced when JavaScript loads
+
+function LikeButton({ initialCount }) {
+  const [count, setCount] = useState(initialCount);
+  
+  return (
+    <form action="/api/like" method="POST">
+      <input type="hidden" name="count" value={count} />
+      <button type="submit" onClick={() => setCount(c => c + 1)}>
+        ❤️ {count}
+      </button>
+    </form>
+  );
+}
+```
+
+<KeyTakeaway>
+Partial hydration dramatically reduces JavaScript overhead by only hydrating interactive components. Use Server Components by default, add client components only when interactivity is needed, and leverage framework-specific directives to control when hydration occurs. This approach is ideal for content-heavy sites where most of the page is static.
+</KeyTakeaway>

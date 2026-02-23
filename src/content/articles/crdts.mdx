@@ -1,19 +1,321 @@
 ---
 title: "CRDTs"
 slug: "crdts"
-subtitle: "Deep dive into crdts"
+subtitle: "Conflict-free replicated data types"
 category: "architecture"
 icon: "git-merge"
-description: "Understanding crdts and its applications in modern web development"
+description: "Build collaborative applications with CRDTs for conflict-free data synchronization"
 difficulty: "advanced"
-tags: ["architecture","collaboration","sync"]
-related: []
-resources: []
-status: "stub"
+tags: ["architecture","collaboration","sync","distributed"]
+related: ["event-sourcing","websockets","ddd"]
+resources:
+  - title: "CRDTs Paper"
+    url: "https://crdt.tech/"
+  - title: "Yjs Documentation"
+    url: "https://docs.yjs.dev/"
+status: "published"
 ---
 
 <DefinitionBlock>
-CRDTs is a concept in frontend engineering. This article is currently being written.
+CRDTs (Conflict-free Replicated Data Types) are data structures that can be replicated across multiple nodes in a distributed system and updated independently, while guaranteeing that all replicas will eventually converge to the same state without requiring consensus or conflict resolution.
 </DefinitionBlock>
 
-<StubNotice />
+## The Problem
+
+### Concurrent Editing
+```
+User A: "Hello" → "Hello World"
+User B: "Hello" → "Hi there"
+
+Without CRDTs: Which version wins?
+Last-write-wins? Lose data!
+Operational Transform? Complex!
+
+With CRDTs: Merge automatically
+Result: "Hello World" + "Hi there" = "Hi World"
+```
+
+## Basic Concepts
+
+### State-Based CRDTs
+```javascript
+// G-Counter (Grow-only Counter)
+class GCounter {
+  constructor() {
+    this.state = new Map(); // node -> value
+  }
+  
+  increment(nodeId) {
+    const current = this.state.get(nodeId) || 0;
+    this.state.set(nodeId, current + 1);
+  }
+  
+  value() {
+    return Array.from(this.state.values())
+      .reduce((a, b) => a + b, 0);
+  }
+  
+  merge(other) {
+    for (const [node, value] of other.state) {
+      const current = this.state.get(node) || 0;
+      this.state.set(node, Math.max(current, value));
+    }
+  }
+}
+
+// Usage
+const counterA = new GCounter();
+counterA.increment('A');
+counterA.increment('A');
+
+const counterB = new GCounter();
+counterB.increment('B');
+
+counterA.merge(counterB);
+console.log(counterA.value()); // 3
+```
+
+### Operation-Based CRDTs
+```javascript
+// Causal broadcast ensures ordering
+class TextCRDT {
+  constructor() {
+    this.text = [];
+    this.operations = [];
+  }
+  
+  insert(char, position) {
+    const op = {
+      type: 'insert',
+      char,
+      position,
+      timestamp: generateTimestamp(),
+      nodeId: this.nodeId
+    };
+    
+    this.apply(op);
+    this.broadcast(op);
+  }
+  
+  apply(op) {
+    if (op.type === 'insert') {
+      this.text.splice(op.position, 0, op.char);
+    }
+  }
+}
+```
+
+## Types of CRDTs
+
+### 1. G-Set (Grow-only Set)
+```javascript
+class GSet {
+  constructor() {
+    this.elements = new Set();
+  }
+  
+  add(element) {
+    this.elements.add(element);
+  }
+  
+  merge(other) {
+    for (const elem of other.elements) {
+      this.elements.add(elem);
+    }
+  }
+  
+  has(element) {
+    return this.elements.has(element);
+  }
+}
+```
+
+### 2. OR-Set (Observed-Remove Set)
+```javascript
+class ORSet {
+  constructor() {
+    this.elements = new Map(); // value -> set of tags
+    this.removed = new Set();  // removed tags
+  }
+  
+  add(value) {
+    const tag = generateUniqueId();
+    const tags = this.elements.get(value) || new Set();
+    tags.add(tag);
+    this.elements.set(value, tags);
+  }
+  
+  remove(value) {
+    const tags = this.elements.get(value);
+    if (tags) {
+      for (const tag of tags) {
+        this.removed.add(tag);
+      }
+    }
+  }
+  
+  has(value) {
+    const tags = this.elements.get(value);
+    if (!tags) return false;
+    
+    // Has at least one non-removed tag
+    for (const tag of tags) {
+      if (!this.removed.has(tag)) return true;
+    }
+    return false;
+  }
+  
+  merge(other) {
+    // Merge elements
+    for (const [value, tags] of other.elements) {
+      const myTags = this.elements.get(value) || new Set();
+      for (const tag of tags) {
+        myTags.add(tag);
+      }
+      this.elements.set(value, myTags);
+    }
+    
+    // Merge removed
+    for (const tag of other.removed) {
+      this.removed.add(tag);
+    }
+  }
+}
+```
+
+### 3. LWW-Register (Last-Write-Wins)
+```javascript
+class LWWRegister {
+  constructor() {
+    this.value = null;
+    this.timestamp = 0;
+    this.nodeId = null;
+  }
+  
+  set(value, timestamp, nodeId) {
+    if (timestamp > this.timestamp || 
+        (timestamp === this.timestamp && nodeId > this.nodeId)) {
+      this.value = value;
+      this.timestamp = timestamp;
+      this.nodeId = nodeId;
+    }
+  }
+  
+  merge(other) {
+    this.set(other.value, other.timestamp, other.nodeId);
+  }
+}
+```
+
+## Practical Implementation
+
+### Using Yjs (Popular CRDT Library)
+```javascript
+import * as Y from 'yjs';
+import { WebsocketProvider } from 'y-websocket';
+
+// Create document
+const ydoc = new Y.Doc();
+
+// Shared types
+const ytext = ydoc.getText('content');
+const yarray = ydoc.getArray('items');
+const ymap = ydoc.getMap('metadata');
+
+// Connect to sync server
+const provider = new WebsocketProvider(
+  'wss://demo.yjs.dev', 
+  'document-room', 
+  ydoc
+);
+
+// Observe changes
+ytext.observe(() => {
+  console.log('Text changed:', ytext.toString());
+});
+
+// Make changes
+ytext.insert(0, 'Hello World');
+yarray.push(['item1', 'item2']);
+ymap.set('author', 'John');
+```
+
+### Collaborative Text Editing
+```javascript
+import * as Y from 'yjs';
+
+function CollaborativeEditor() {
+  const [ydoc] = useState(() => new Y.Doc());
+  const [text, setText] = useState('');
+  
+  useEffect(() => {
+    const ytext = ydoc.getText('content');
+    
+    // Listen for remote changes
+    ytext.observe(() => {
+      setText(ytext.toString());
+    });
+    
+    // Sync with server
+    const provider = new WebsocketProvider(
+      'wss://server.com',
+      'doc-id',
+      ydoc
+    );
+    
+    return () => provider.destroy();
+  }, [ydoc]);
+  
+  const handleChange = (e) => {
+    const ytext = ydoc.getText('content');
+    const newText = e.target.value;
+    
+    // Calculate diff and apply
+    ytext.delete(0, ytext.length);
+    ytext.insert(0, newText);
+  };
+  
+  return <textarea value={text} onChange={handleChange} />;
+}
+```
+
+## Use Cases
+
+### 1. Collaborative Editing
+```javascript
+// Google Docs, Notion, Figma-style collaboration
+// Multiple users edit same document simultaneously
+// Changes merge automatically
+```
+
+### 2. Offline-First Apps
+```javascript
+// Work offline, sync when online
+// Conflicts resolve automatically
+// No data loss
+```
+
+### 3. Distributed Databases
+```javascript
+// Riak, Redis CRDT modules
+// Eventual consistency
+// High availability
+```
+
+## Trade-offs
+
+### Pros
+- Automatic conflict resolution
+- No consensus required
+- High availability
+- Works offline
+
+### Cons
+- Increased memory usage
+- Complex implementations
+- Eventual consistency (not immediate)
+- Garbage collection challenges
+
+<KeyTakeaway>
+CRDTs enable real-time collaboration without locks or consensus. They guarantee that all replicas eventually converge to the same state, making them perfect for collaborative editing, offline-first apps, and distributed systems. Use established libraries like Yjs rather than implementing from scratch.
+</KeyTakeaway>

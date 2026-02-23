@@ -1,19 +1,340 @@
 ---
 title: "Motion Preferences"
 slug: "motion-preferences"
-subtitle: "Deep dive into motion preferences"
+subtitle: "Respect user preferences for animations"
 category: "accessibility"
 icon: "move"
-description: "Understanding motion preferences and its applications in modern web development"
+description: "Implement prefers-reduced-motion to respect user preferences and prevent vestibular disorders"
 difficulty: "intermediate"
-tags: ["a11y","animation","prefers-reduced-motion"]
-related: []
-resources: []
-status: "stub"
+tags: ["a11y","animation","prefers-reduced-motion","css"]
+related: ["color-contrast","semantic-html","aria"]
+resources:
+  - title: "MDN - prefers-reduced-motion"
+    url: "https://developer.mozilla.org/en-US/docs/Web/CSS/@media/prefers-reduced-motion"
+  - title: "Web.dev -prefers-reduced-motion"
+    url: "https://web.dev/prefers-reduced-motion/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Motion Preferences is a concept in frontend engineering. This article is currently being written.
+The prefers-reduced-motion media query allows websites to respect user preferences for motion and animations. Some users experience vestibular disorders, motion sickness, or simply prefer less animation. This CSS feature enables you to provide alternative experiences that don't trigger these issues.
 </DefinitionBlock>
 
-<StubNotice />
+## The Problem
+
+### Motion Sensitivity
+```css
+/* Some users experience: */
+- Vertigo from parallax scrolling
+- Nausea from zoom animations
+- Dizziness from spinning elements
+- Disorientation from rapid transitions
+```
+
+### Operating System Settings
+```
+macOS: System Preferences > Accessibility > Display > Reduce motion
+Windows: Settings > Ease of Access > Display > Show animations
+iOS: Settings > Accessibility > Motion > Reduce Motion
+Android: Settings > Accessibility > Remove animations
+```
+
+## Implementing prefers-reduced-motion
+
+### CSS Approach
+```css
+/* Default: Animations enabled */
+.modal {
+  animation: slideIn 0.3s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* User prefers less motion */
+  .modal {
+    animation: none;
+    opacity: 1;
+  }
+  
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+```
+
+### Granular Control
+```css
+/* Respect preference per component */
+.animated-card {
+  transition: transform 0.3s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animated-card {
+    transition: opacity 0.2s ease; /* Safer alternative */
+  }
+}
+
+/* Or disable entirely */
+.parallax-bg {
+  transform: translateY(calc(var(--scroll) * 0.5));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .parallax-bg {
+    transform: none; /* Static fallback */
+  }
+}
+```
+
+## JavaScript Detection
+
+### Match Media
+```javascript
+// Check user preference
+const prefersReducedMotion = window.matchMedia(
+  '(prefers-reduced-motion: reduce)'
+).matches;
+
+// Use in animations
+if (!prefersReducedMotion) {
+  // Play animation
+  gsap.to('.element', { x: 100, duration: 1 });
+} else {
+  // Instant state change
+  gsap.set('.element', { x: 100 });
+}
+```
+
+### React Hook
+```javascript
+function usePrefersReducedMotion() {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(
+      '(prefers-reduced-motion: reduce)'
+    );
+    
+    setPrefersReducedMotion(mediaQuery.matches);
+    
+    const listener = (event) => {
+      setPrefersReducedMotion(event.matches);
+    };
+    
+    mediaQuery.addEventListener('change', listener);
+    return () => mediaQuery.removeEventListener('change', listener);
+  }, []);
+  
+  return prefersReducedMotion;
+}
+
+// Usage
+function AnimatedModal({ isOpen }) {
+  const prefersReducedMotion = usePrefersReducedMotion();
+  
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 50 }}
+      animate={{ 
+        opacity: isOpen ? 1 : 0,
+        y: isOpen ? 0 : 50 
+      }}
+      transition={
+        prefersReducedMotion 
+          ? { duration: 0 } 
+          : { duration: 0.3 }
+      }
+    />
+  );
+}
+```
+
+## Common Patterns
+
+### Safe Alternatives
+```css
+/* Slide in animation */
+.modal {
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Reduced motion: just fade */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes slideIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+}
+```
+
+### Scroll Animations
+```javascript
+// Intersection Observer with reduced motion check
+function setupScrollAnimations() {
+  const prefersReducedMotion = window.matchMedia(
+    '(prefers-reduced-motion: reduce)'
+  ).matches;
+  
+  if (prefersReducedMotion) {
+    // Show all elements immediately
+    document.querySelectorAll('.reveal').forEach(el => {
+      el.classList.add('is-visible');
+    });
+    return;
+  }
+  
+  // Normal scroll animations
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('is-visible');
+      }
+    });
+  });
+  
+  document.querySelectorAll('.reveal').forEach(el => {
+    observer.observe(el);
+  });
+}
+```
+
+### Video/GIF Autoplay
+```javascript
+// Respect reduced motion for autoplay
+function shouldAutoplay() {
+  const prefersReducedMotion = window.matchMedia(
+    '(prefers-reduced-motion: reduce)'
+  ).matches;
+  
+  return !prefersReducedMotion;
+}
+
+// Usage
+<video
+  autoPlay={shouldAutoplay()}
+  muted
+  loop
+  poster="thumbnail.jpg"
+>
+  <source src="video.mp4" />
+</video>
+```
+
+## WCAG Guidelines
+
+### Success Criterion 2.2.2 (Pause, Stop, Hide)
+```css
+/* Moving, blinking, scrolling content must be stoppable */
+
+/* Provide pause mechanism */
+.animated-banner {
+  animation: scroll 10s linear infinite;
+}
+
+.paused {
+  animation-play-state: paused;
+}
+```
+
+### Success Criterion 2.3.3 (Animation from Interactions)
+```javascript
+// Motion triggered by user interaction
+// Must respect prefers-reduced-motion
+
+button.addEventListener('click', () => {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    // No animation
+    showContent();
+  } else {
+    // Animate
+    animateAndShowContent();
+  }
+});
+```
+
+## Best Practices
+
+### 1. Essential vs Decorative
+```css
+/* Essential motion: Keep but simplify */
+.loading-spinner {
+  animation: spin 1s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-spinner {
+    animation: pulse 2s ease-in-out infinite;
+    /* Still shows activity, but calmer */
+  }
+}
+
+/* Decorative motion: Can disable */
+.floating-decoration {
+  animation: float 3s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .floating-decoration {
+    animation: none;
+  }
+}
+```
+
+### 2. Testing
+```javascript
+// Test with reduced motion enabled
+// Chrome DevTools: Rendering tab > Emulate CSS media feature
+
+// Force for testing
+document.documentElement.style.setProperty(
+  '--prefers-reduced-motion',
+  'reduce'
+);
+```
+
+### 3. Progressive Enhancement
+```css
+/* Start without motion */
+.element {
+  opacity: 0;
+}
+
+/* Add motion if user prefers */
+@media (prefers-reduced-motion: no-preference) {
+  .element {
+    animation: fadeIn 0.5s ease forwards;
+  }
+}
+
+/* Or use a class */
+@media (prefers-reduced-motion: no-preference) {
+  .animate-on-scroll {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  
+  .animate-on-scroll.is-visible {
+    animation: fadeUp 0.5s ease forwards;
+  }
+}
+```
+
+<KeyTakeaway>
+Always respect prefers-reduced-motion. Provide instant state changes as alternatives to animations. Test your site with reduced motion enabled. Remember that motion preferences are about accessibility, not just aesthetics.
+</KeyTakeaway>

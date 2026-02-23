@@ -1,19 +1,220 @@
 ---
 title: "Service Workers"
 slug: "service-workers"
-subtitle: "Deep dive into service workers"
+subtitle: "Enable offline experiences and background sync"
 category: "browser-apis"
 icon: "hard-hat"
-description: "Understanding service workers and its applications in modern web development"
+description: "Build Progressive Web Apps with Service Workers for offline functionality, push notifications, and background sync"
 difficulty: "advanced"
-tags: ["browser","pwa","offline"]
-related: []
-resources: []
-status: "stub"
+tags: ["browser","pwa","offline","caching"]
+related: ["cache-strategies","indexeddb","web-workers"]
+resources:
+  - title: "MDN - Service Worker API"
+    url: "https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API"
+  - title: "Google Developers - Service Workers"
+    url: "https://developers.google.com/web/fundamentals/primers/service-workers"
+status: "published"
 ---
 
 <DefinitionBlock>
-Service Workers is a concept in frontend engineering. This article is currently being written.
+Service Workers are scripts that run in the background, separate from the web page, enabling features like push notifications, background sync, and offline experiences. They act as a programmable network proxy, allowing you to control how network requests from your page are handled.
 </DefinitionBlock>
 
-<StubNotice />
+## Lifecycle
+
+### Registration
+```javascript
+// main.js
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      console.log('SW registered:', registration.scope);
+      
+      // Check for updates
+      registration.addEventListener('updatefound', () => {
+        const newWorker = registration.installing;
+        console.log('New SW installing:', newWorker);
+      });
+    } catch (error) {
+      console.error('SW registration failed:', error);
+    }
+  });
+}
+```
+
+### Service Worker Script
+```javascript
+// sw.js
+const CACHE_NAME = 'v1';
+const urlsToCache = [
+  '/',
+  '/styles.css',
+  '/app.js',
+  '/icon.png'
+];
+
+// Install event - cache assets
+self.addEventListener('install', (event) => {
+  console.log('Service Worker installing');
+  
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(urlsToCache))
+      .then(() => self.skipWaiting())
+  );
+});
+
+// Activate event - clean old caches
+self.addEventListener('activate', (event) => {
+  console.log('Service Worker activating');
+  
+  event.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames
+          .filter(name => name !== CACHE_NAME)
+          .map(name => caches.delete(name))
+      );
+    }).then(() => self.clients.claim())
+  );
+});
+
+// Fetch event - serve from cache or network
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request)
+      .then(response => {
+        // Return cached version or fetch from network
+        if (response) {
+          return response;
+        }
+        return fetch(event.request);
+      })
+  );
+});
+```
+
+## Caching Strategies
+
+### Cache First
+```javascript
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request)
+      .then(response => {
+        return response || fetch(event.request);
+      })
+  );
+});
+```
+
+### Network First
+```javascript
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    fetch(event.request)
+      .catch(() => caches.match(event.request))
+  );
+});
+```
+
+### Stale While Revalidate
+```javascript
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.open(CACHE_NAME).then(cache => {
+      return cache.match(event.request).then(response => {
+        const fetchPromise = fetch(event.request).then(networkResponse => {
+          cache.put(event.request, networkResponse.clone());
+          return networkResponse;
+        });
+        
+        return response || fetchPromise;
+      });
+    })
+  );
+});
+```
+
+## Advanced Features
+
+### Background Sync
+```javascript
+// In main.js
+navigator.serviceWorker.ready.then(registration => {
+  return registration.sync.register('sync-data');
+});
+
+// In sw.js
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'sync-data') {
+    event.waitUntil(syncDataWithServer());
+  }
+});
+
+async function syncDataWithServer() {
+  const data = await getPendingData();
+  await fetch('/api/sync', {
+    method: 'POST',
+    body: JSON.stringify(data)
+  });
+}
+```
+
+### Push Notifications
+```javascript
+// In sw.js
+self.addEventListener('push', (event) => {
+  const data = event.data.json();
+  
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: '/icon.png',
+      badge: '/badge.png',
+      data: data.url
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  
+  event.waitUntil(
+    clients.openWindow(event.notification.data)
+  );
+});
+```
+
+## Best Practices
+
+```javascript
+// Version your cache
+const CACHE_NAME = 'my-app-v2';
+
+// Precache critical resources
+const PRECACHE_ASSETS = [
+  '/',
+  '/offline.html',
+  '/styles.css',
+  '/app.js'
+];
+
+// Implement cache cleanup
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames
+          .filter(name => !name.startsWith('my-app'))
+          .map(name => caches.delete(name))
+      );
+    })
+  );
+});
+```
+
+<KeyTakeaway>
+Service Workers enable offline functionality, background sync, and push notifications. They follow a specific lifecycle (installing, waiting, activating) and intercept network requests to serve cached content. Use versioning for cache management and implement appropriate caching strategies for different resource types.
+</KeyTakeaway>

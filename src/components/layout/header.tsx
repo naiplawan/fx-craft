@@ -9,9 +9,9 @@ export function Header() {
       <div className="container mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex h-16 items-center justify-between">
           <Link href="/" className="flex items-center gap-2.5">
-            <Image src="/logo.svg" alt="FECraft" width={28} height={28} className="rounded-md" />
+            <Image src="/logo.svg" alt="SalakCode" width={28} height={28} className="rounded-md" />
             <span className="text-xl font-bold text-gray-900 dark:text-gray-100">
-              FECraft
+              SalakCode
             </span>
           </Link>
 

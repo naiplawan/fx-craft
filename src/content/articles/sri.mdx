@@ -1,19 +1,295 @@
 ---
 title: "Subresource Integrity"
 slug: "sri"
-subtitle: "Deep dive into subresource integrity"
+subtitle: "Verify CDN resources haven't been tampered with"
 category: "security"
 icon: "file-check"
-description: "Understanding subresource integrity and its applications in modern web development"
+description: "Use cryptographic hashes to ensure external resources loaded from CDNs haven't been modified"
 difficulty: "intermediate"
-tags: ["security","cdn","integrity"]
-related: []
-resources: []
-status: "stub"
+tags: ["security","cdn","integrity","hashing"]
+related: ["csp","https","xss"]
+resources:
+  - title: "MDN - Subresource Integrity"
+    url: "https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity"
+  - title: "SRI Hash Generator"
+    url: "https://www.srihash.org/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Subresource Integrity is a concept in frontend engineering. This article is currently being written.
+Subresource Integrity (SRI) is a security feature that enables browsers to verify that resources fetched from third-party CDNs or external servers haven't been tampered with. It uses cryptographic hashes to ensure the file content matches exactly what you expect.
 </DefinitionBlock>
 
-<StubNotice />
+## The Problem
+
+### CDN Compromise Risks
+```
+Scenario:
+1. Your site loads jQuery from CDN: https://cdn.example.com/jquery.min.js
+2. Attacker compromises the CDN
+3. Malicious code injected into jQuery
+4. All sites loading from CDN are compromised
+
+Without SRI:
+- Browser loads compromised script
+- Executes malicious code
+- XSS attack successful
+```
+
+## How SRI Works
+
+### Basic Implementation
+```html
+<!-- Without SRI -->
+<script src="https://cdn.example.com/app.js"></script>
+
+<!-- With SRI -->
+<script 
+  src="https://cdn.example.com/app.js"
+  integrity="sha384-abc123...xyz789"
+  crossorigin="anonymous">
+</script>
+```
+
+### What Happens
+```
+1. Browser downloads the resource
+2. Calculates SHA-384 hash of the content
+3. Compares with integrity attribute
+4. If match: execute resource
+5. If mismatch: reject and report error
+```
+
+## Generating Hashes
+
+### Command Line
+```bash
+# Using OpenSSL
+cat app.js | openssl dgst -sha384 -binary | openssl base64 -A
+
+# Using shasum
+cat app.js | shasum -b -a 384 | awk '{ print $1 }' | xxd -r -p | base64
+
+# Using node
+echo -n "sha384-$(cat app.js | openssl dgst -sha384 -binary | base64)"
+```
+
+### Online Tools
+```
+https://www.srihash.org/
+https://report-uri.com/home/sri_hash
+```
+
+### Build Tools
+```javascript
+// webpack-subresource-integrity
+const SriPlugin = require('webpack-subresource-integrity');
+
+module.exports = {
+  plugins: [
+    new SriPlugin({
+      hashFuncNames: ['sha256', 'sha384'],
+      enabled: process.env.NODE_ENV === 'production'
+    })
+  ]
+};
+
+// vite-plugin-sri
+import { sri } from 'vite-plugin-sri';
+
+export default {
+  plugins: [
+    sri({ algorithm: 'sha384' })
+  ]
+};
+```
+
+## Using SRI
+
+### Script Tags
+```html
+<script
+  src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"
+  integrity="sha384-XYZ..."
+  crossorigin="anonymous">
+</script>
+```
+
+### Stylesheets
+```html
+<link
+  rel="stylesheet"
+  href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+  integrity="sha384-XYZ..."
+  crossorigin="anonymous"
+>
+```
+
+### Multiple Algorithms
+```html
+<script
+  src="https://cdn.example.com/app.js"
+  integrity="sha256-abc123... sha384-def456... sha512-ghi789..."
+  crossorigin="anonymous">
+</script>
+```
+
+Browser will use the strongest hash it supports.
+
+## Cross-Origin
+
+### CORS Requirements
+```
+When using SRI with cross-origin resources:
+1. CDN must send CORS headers
+2. Must include crossorigin attribute
+
+Required header from CDN:
+Access-Control-Allow-Origin: * (or specific origin)
+```
+
+### Error Handling
+```javascript
+// Detect SRI failures
+window.addEventListener('securitypolicyviolation', (e) => {
+  console.error('SRI Violation:', {
+    blockedURI: e.blockedURI,
+    violatedDirective: e.violatedDirective,
+    originalPolicy: e.originalPolicy
+  });
+  
+  // Fallback to local copy
+  loadLocalFallback(e.blockedURI);
+});
+
+function loadLocalFallback(originalSrc) {
+  const fallbackMap = {
+    'https://cdn.example.com/app.js': '/js/app.js'
+  };
+  
+  const script = document.createElement('script');
+  script.src = fallbackMap[originalSrc] || '/js/bundle.js';
+  document.head.appendChild(script);
+}
+```
+
+## Best Practices
+
+### 1. Use SRI for All External Resources
+```html
+<!-- Third-party libraries -->
+<script 
+  src="https://cdn.jsdelivr.net/npm/jquery@3.6.0/dist/jquery.min.js"
+  integrity="sha384-..."
+  crossorigin="anonymous">
+</script>
+
+<!-- Fonts -->
+<link 
+  rel="stylesheet"
+  href="https://fonts.googleapis.com/css2?family=Inter"
+  integrity="sha384-..."
+  crossorigin="anonymous"
+>
+```
+
+### 2. Automate Hash Generation
+```javascript
+// CI/CD pipeline
+const crypto = require('crypto');
+const fs = require('fs');
+
+function generateSRI(filePath) {
+  const content = fs.readFileSync(filePath);
+  const hash = crypto.createHash('sha384')
+    .update(content)
+    .digest('base64');
+  return `sha384-${hash}`;
+}
+
+// Inject into HTML templates
+const integrityHash = generateSRI('./dist/app.js');
+```
+
+### 3. Version Pinning
+```html
+<!-- ✅ Pin exact version -->
+<script
+  src="https://cdn.example.com/lib@2.3.1.min.js"
+  integrity="sha384-...">
+</script>
+
+<!-- ❌ Don't use latest (hash will break) -->
+<script
+  src="https://cdn.example.com/lib@latest.min.js"
+  integrity="sha384-..."
+>
+</script>
+```
+
+### 4. Monitor and Update
+```javascript
+// Check for CDN updates
+fetch('https://api.cdnjs.com/libraries/jquery')
+  .then(res => res.json())
+  .then(data => {
+    const latestVersion = data.version;
+    const currentVersion = '3.6.0';
+    
+    if (latestVersion !== currentVersion) {
+      console.warn(`Update available: ${currentVersion} → ${latestVersion}`);
+      // Generate new hash and update HTML
+    }
+  });
+```
+
+## Limitations
+
+### 1. Dynamic Content
+```html
+<!-- ❌ Won't work -->
+<script
+  src="https://api.example.com/config.js"  
+  integrity="sha384-..."
+>
+</script>
+<!-- Content changes per user -->
+```
+
+### 2. Resource Requirements
+- CORS headers required from CDN
+- Hash must be pre-calculated
+- Doesn't work with opaque responses
+
+## Testing SRI
+
+### Verify Implementation
+```javascript
+// Check if SRI is working
+const scripts = document.querySelectorAll('script[integrity]');
+const failed = [];
+
+scripts.forEach(script => {
+  if (!script.loaded) {
+    failed.push(script.src);
+  }
+});
+
+console.log('SRI Status:', {
+  total: scripts.length,
+  failed: failed.length,
+  failedUrls: failed
+});
+```
+
+### Browser DevTools
+```
+1. Network tab
+2. Check Integrity column
+3. Look for (failed) status
+4. Console shows violation errors
+```
+
+<KeyTakeaway>
+SRI protects against CDN compromise by verifying file integrity using cryptographic hashes. Always use SRI for third-party resources, pin exact versions, automate hash generation in your build process, and implement fallback mechanisms for SRI failures. Combine with CSP for defense in depth.
+</KeyTakeaway>

@@ -1,19 +1,319 @@
 ---
 title: "Webpack"
 slug: "webpack"
-subtitle: "Deep dive into webpack"
+subtitle: "Module bundler for modern JavaScript"
 category: "bundling"
 icon: "package"
-description: "Understanding webpack and its applications in modern web development"
+description: "Master Webpack configuration for bundling JavaScript applications with loaders and plugins"
 difficulty: "intermediate"
-tags: ["bundling","webpack","build"]
-related: []
-resources: []
-status: "stub"
+tags: ["bundling","webpack","build","configuration"]
+related: ["vite","rollup","esbuild"]
+resources:
+  - title: "Webpack Documentation"
+    url: "https://webpack.js.org/"
+  - title: "Webpack Concepts"
+    url: "https://webpack.js.org/concepts/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Webpack is a concept in frontend engineering. This article is currently being written.
+Webpack is a static module bundler for modern JavaScript applications. It builds a dependency graph of your application, processing and bundling modules into optimized output files for deployment.
 </DefinitionBlock>
 
-<StubNotice />
+## Core Concepts
+
+### Entry, Output, Loaders, Plugins
+```javascript
+// webpack.config.js
+const path = require('path');
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+
+module.exports = {
+  // Entry point
+  entry: './src/index.js',
+  
+  // Output configuration
+  output: {
+    path: path.resolve(__dirname, 'dist'),
+    filename: '[name].[contenthash:8].js',
+    clean: true
+  },
+  
+  // Module rules (loaders)
+  module: {
+    rules: [
+      {
+        test: /\.js$/,
+        exclude: /node_modules/,
+        use: 'babel-loader'
+      },
+      {
+        test: /\.css$/,
+        use: ['style-loader', 'css-loader']
+      },
+      {
+        test: /\.(png|svg|jpg)$/,
+        type: 'asset/resource'
+      }
+    ]
+  },
+  
+  // Plugins
+  plugins: [
+    new HtmlWebpackPlugin({
+      template: './public/index.html'
+    })
+  ]
+};
+```
+
+## Loaders
+
+### JavaScript (Babel)
+```javascript
+module: {
+  rules: [
+    {
+      test: /\.(js|jsx)$/,
+      exclude: /node_modules/,
+      use: {
+        loader: 'babel-loader',
+        options: {
+          presets: ['@babel/preset-react', '@babel/preset-env']
+        }
+      }
+    }
+  ]
+}
+```
+
+### CSS
+```javascript
+module: {
+  rules: [
+    {
+      test: /\.css$/,
+      use: [
+        'style-loader', // Injects CSS into DOM
+        'css-loader',   // Resolves CSS imports
+        'postcss-loader' // Process CSS with PostCSS
+      ]
+    },
+    {
+      test: /\.scss$/,
+      use: [
+        'style-loader',
+        'css-loader',
+        'sass-loader'   // Compiles Sass to CSS
+      ]
+    }
+  ]
+}
+```
+
+### TypeScript
+```javascript
+module: {
+  rules: [
+    {
+      test: /\.tsx?$/,
+      use: 'ts-loader',
+      exclude: /node_modules/
+    }
+  ]
+},
+resolve: {
+  extensions: ['.tsx', '.ts', '.js']
+}
+```
+
+## Plugins
+
+### Common Plugins
+```javascript
+const HtmlWebpackPlugin = require('html-webpack-plugin');
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+const { CleanWebpackPlugin } = require('clean-webpack-plugin');
+const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
+
+module.exports = {
+  plugins: [
+    // Generate HTML file
+    new HtmlWebpackPlugin({
+      template: './src/index.html',
+      minify: true
+    }),
+    
+    // Extract CSS to separate files
+    new MiniCssExtractPlugin({
+      filename: '[name].[contenthash:8].css'
+    }),
+    
+    // Clean dist folder before build
+    new CleanWebpackPlugin(),
+    
+    // Analyze bundle size
+    new BundleAnalyzerPlugin()
+  ]
+};
+```
+
+## Code Splitting
+
+### Dynamic Imports
+```javascript
+// Automatic code splitting
+const AdminPanel = lazy(() => import('./AdminPanel'));
+
+// webpack creates separate chunk for AdminPanel
+```
+
+### Split Chunks
+```javascript
+optimization: {
+  splitChunks: {
+    chunks: 'all',
+    cacheGroups: {
+      vendor: {
+        test: /[\\/]node_modules[\\/]/,
+        name: 'vendors',
+        chunks: 'all'
+      },
+      common: {
+        minChunks: 2,
+        chunks: 'all',
+        enforce: true
+      }
+    }
+  }
+}
+```
+
+## Development Configuration
+
+### DevServer
+```javascript
+module.exports = {
+  mode: 'development',
+  
+  devtool: 'eval-source-map',
+  
+  devServer: {
+    static: './dist',
+    hot: true,
+    open: true,
+    port: 3000,
+    proxy: {
+      '/api': 'http://localhost:8080'
+    }
+  }
+};
+```
+
+### Environment-Specific Configs
+```javascript
+// webpack.common.js - Shared config
+// webpack.dev.js - Development
+// webpack.prod.js - Production
+
+// webpack.prod.js
+const { merge } = require('webpack-merge');
+const common = require('./webpack.common.js');
+
+module.exports = merge(common, {
+  mode: 'production',
+  
+  optimization: {
+    minimize: true,
+    minimizer: [
+      new TerserPlugin(),
+      new CssMinimizerPlugin()
+    ]
+  }
+});
+```
+
+## Optimization
+
+### Tree Shaking
+```javascript
+module.exports = {
+  mode: 'production',
+  
+  optimization: {
+    usedExports: true,  // Mark unused exports
+    sideEffects: false  // Enable tree shaking
+  }
+};
+
+// In package.json
+{
+  "sideEffects": [
+    "*.css",
+    "*.scss"
+  ]
+}
+```
+
+### Caching
+```javascript
+output: {
+  filename: '[name].[contenthash:8].js',
+  chunkFilename: '[name].[contenthash:8].chunk.js'
+},
+
+optimization: {
+  moduleIds: 'deterministic',
+  runtimeChunk: 'single',
+  splitChunks: {
+    cacheGroups: {
+      vendor: {
+        test: /[\\/]node_modules[\\/]/,
+        name: 'vendors',
+        chunks: 'all'
+      }
+    }
+  }
+}
+```
+
+## Module Resolution
+
+### Aliases
+```javascript
+resolve: {
+  alias: {
+    '@': path.resolve(__dirname, 'src/'),
+    '@components': path.resolve(__dirname, 'src/components/'),
+    '@utils': path.resolve(__dirname, 'src/utils/')
+  }
+}
+
+// Usage
+import Button from '@components/Button';
+import { formatDate } from '@utils/date';
+```
+
+## Best Practices
+
+### Performance Budgets
+```javascript
+performance: {
+  hints: 'error',
+  maxEntrypointSize: 250000,
+  maxAssetSize: 250000
+}
+```
+
+### Analyzing Bundle
+```bash
+# Generate stats file
+webpack --profile --json > stats.json
+
+# Analyze online
+npx webpack-bundle-analyzer stats.json
+```
+
+<KeyTakeaway>
+Webpack is powerful but complex. Configure loaders for different file types, use plugins for optimization, implement code splitting for performance, and leverage caching with content hashes. Consider migrating to Vite for new projects, but understanding Webpack remains valuable for maintaining existing codebases.
+</KeyTakeaway>

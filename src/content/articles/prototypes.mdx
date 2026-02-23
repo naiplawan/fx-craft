@@ -1,19 +1,437 @@
 ---
 title: "Prototypes"
 slug: "prototypes"
-subtitle: "Deep dive into prototypes"
+subtitle: "JavaScript's inheritance model"
 category: "javascript-core"
 icon: "git-fork"
-description: "Understanding prototypes and its applications in modern web development"
-difficulty: "intermediate"
-tags: ["javascript","oop","inheritance"]
-related: []
-resources: []
-status: "stub"
+description: "Understanding prototype-based inheritance, the prototype chain, and modern class syntax in JavaScript"
+difficulty: "advanced"
+tags: ["javascript","oop","inheritance","objects"]
+related: ["closures","composition"]
+resources:
+  - title: "MDN - Inheritance and the prototype chain"
+    url: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Inheritance_and_the_prototype_chain"
+  - title: "You Don't Know JS - this & Object Prototypes"
+    url: "https://github.com/getify/You-Dont-Know-JS/blob/1st-ed/this%20%26%20object%20prototypes/README.md"
+status: "published"
 ---
 
 <DefinitionBlock>
-Prototypes is a concept in frontend engineering. This article is currently being written.
+JavaScript uses prototype-based inheritance where objects inherit directly from other objects through a prototype chain. Every object has an internal [[Prototype]] link that references another object, forming a chain that the JavaScript engine traverses when looking up properties.
 </DefinitionBlock>
 
-<StubNotice />
+## The Prototype Chain
+
+### How It Works
+```javascript
+const animal = {
+  eats: true,
+  walk() {
+    console.log('Animal walks');
+  }
+};
+
+const rabbit = {
+  jumps: true,
+  __proto__: animal // rabbit inherits from animal
+};
+
+// Property lookup goes up the chain
+console.log(rabbit.jumps); // true (own property)
+console.log(rabbit.eats);  // true (inherited from animal)
+rabbit.walk();             // "Animal walks" (inherited method)
+```
+
+### The Chain Visualization
+```
+rabbit
+  ├── jumps: true
+  └── [[Prototype]] ──> animal
+                         ├── eats: true
+                         ├── walk: function
+                         └── [[Prototype]] ──> Object.prototype
+                                                  ├── toString
+                                                  ├── valueOf
+                                                  └── [[Prototype]] ──> null
+```
+
+## Creating Objects with Prototypes
+
+### Object.create()
+```javascript
+const person = {
+  greet() {
+    console.log(`Hello, I'm ${this.name}`);
+  }
+};
+
+const student = Object.create(person, {
+  name: { value: 'Alice' },
+  study: { value: function() { console.log('Studying...'); } }
+});
+
+student.greet();  // "Hello, I'm Alice"
+student.study();  // "Studying..."
+```
+
+### Constructor Functions
+```javascript
+function Animal(name) {
+  this.name = name;
+}
+
+// Add methods to prototype
+Animal.prototype.speak = function() {
+  console.log(`${this.name} makes a sound`);
+};
+
+const dog = new Animal('Rex');
+dog.speak(); // "Rex makes a sound"
+
+// Verify prototype chain
+console.log(dog.__proto__ === Animal.prototype);        // true
+console.log(Animal.prototype.__proto__ === Object.prototype); // true
+```
+
+## Prototype Property vs __proto__
+
+### Understanding the Difference
+```javascript
+function Person(name) {
+  this.name = name;
+}
+
+// Person.prototype - the object that will be the prototype of instances
+Person.prototype.greet = function() {
+  console.log(`Hi, I'm ${this.name}`);
+};
+
+const john = new Person('John');
+
+// john.__proto__ - the actual prototype of the instance
+console.log(john.__proto__ === Person.prototype); // true
+
+// Modern alternative: Object.getPrototypeOf()
+console.log(Object.getPrototypeOf(john) === Person.prototype); // true
+```
+
+### Setting Prototypes
+```javascript
+const parent = { parentProp: true };
+const child = { childProp: true };
+
+// Old way (deprecated but still works)
+child.__proto__ = parent;
+
+// Modern way
+Object.setPrototypeOf(child, parent);
+
+// Better: create with prototype
+const child2 = Object.create(parent, {
+  childProp: { value: true }
+});
+```
+
+## Class Syntax (Syntactic Sugar)
+
+### ES6 Classes
+```javascript
+class Animal {
+  constructor(name) {
+    this.name = name;
+  }
+  
+  speak() {
+    console.log(`${this.name} makes a sound`);
+  }
+  
+  // Static method on constructor, not prototype
+  static isAnimal(obj) {
+    return obj instanceof Animal;
+  }
+}
+
+class Dog extends Animal {
+  constructor(name, breed) {
+    super(name); // Call parent constructor
+    this.breed = breed;
+  }
+  
+  speak() {
+    console.log(`${this.name} barks!`);
+  }
+  
+  fetch() {
+    console.log(`${this.name} is fetching`);
+  }
+}
+
+const rex = new Dog('Rex', 'German Shepherd');
+rex.speak(); // "Rex barks!"
+rex.fetch(); // "Rex is fetching"
+```
+
+### Under the Hood
+```javascript
+// Class syntax is equivalent to:
+function Animal(name) {
+  this.name = name;
+}
+
+Animal.prototype.speak = function() {
+  console.log(`${this.name} makes a sound`);
+};
+
+function Dog(name, breed) {
+  Animal.call(this, name); // super()
+  this.breed = breed;
+}
+
+// Set up inheritance
+Dog.prototype = Object.create(Animal.prototype);
+Dog.prototype.constructor = Dog;
+
+Dog.prototype.speak = function() {
+  console.log(`${this.name} barks!`);
+};
+```
+
+## Property Lookup and Shadowing
+
+### Shadowing
+```javascript
+const parent = {
+  name: 'Parent',
+  greet() {
+    console.log('Hello from parent');
+  }
+};
+
+const child = {
+  __proto__: parent,
+  name: 'Child', // Shadows parent's name
+  greet() {
+    console.log('Hello from child');
+  }
+};
+
+console.log(child.name); // "Child" (own property)
+child.greet();           // "Hello from child" (own method)
+```
+
+### Checking Property Origin
+```javascript
+const obj = {
+  ownProp: true,
+  __proto__: { inheritedProp: true }
+};
+
+// Check if property is own property
+console.log(obj.hasOwnProperty('ownProp'));      // true
+console.log(obj.hasOwnProperty('inheritedProp')); // false
+
+// Check if property exists anywhere in chain
+console.log('ownProp' in obj);        // true
+console.log('inheritedProp' in obj);  // true
+console.log('toString' in obj);       // true
+
+// Get all own property names
+console.log(Object.keys(obj)); // ['ownProp']
+
+// Get all enumerable properties
+for (const key in obj) {
+  console.log(key); // ownProp, inheritedProp
+}
+```
+
+## Advanced Patterns
+
+### Mixin Pattern
+```javascript
+const flyMixin = {
+  fly() {
+    console.log(`${this.name} is flying`);
+  }
+};
+
+const swimMixin = {
+  swim() {
+    console.log(`${this.name} is swimming`);
+  }
+};
+
+function Duck(name) {
+  this.name = name;
+}
+
+// Copy methods to prototype
+Object.assign(Duck.prototype, flyMixin, swimMixin);
+
+const donald = new Duck('Donald');
+donald.fly();  // "Donald is flying"
+donald.swim(); // "Donald is swimming"
+```
+
+### Parasitic Inheritance
+```javascript
+function createSpecialArray() {
+  // Create instance using array constructor
+  const array = [];
+  
+  // Augment with custom methods
+  array.specialMethod = function() {
+    console.log('Special method called');
+  };
+  
+  return array;
+}
+
+const special = createSpecialArray();
+special.push(1, 2, 3);
+special.specialMethod();
+```
+
+### Functional Inheritance
+```javascript
+function person(name) {
+  const self = {};
+  
+  // Private variable (closure)
+  let secret = 'my secret';
+  
+  // Public methods
+  self.getName = () => name;
+  self.greet = () => console.log(`Hello, I'm ${name}`);
+  self.revealSecret = () => secret;
+  
+  return self;
+}
+
+function employee(name, title) {
+  const self = person(name); // Inherit from person
+  
+  // Extend with new methods
+  self.getTitle = () => title;
+  self.introduce = () => {
+    console.log(`I'm ${self.getName()}, ${title}`);
+  };
+  
+  return self;
+}
+
+const emp = employee('John', 'Developer');
+emp.greet();      // Inherited
+emp.introduce();  // Own method
+```
+
+## Common Issues
+
+### Prototype Pollution
+```javascript
+// Dangerous - modifying built-in prototypes
+Array.prototype.bad = function() {
+  // This affects ALL arrays!
+};
+
+// Safe - extend with symbol
+const customMethod = Symbol('customMethod');
+Array.prototype[customMethod] = function() {
+  // Won't conflict with future JS features
+};
+```
+
+### Performance Considerations
+```javascript
+// Creating methods in constructor
+function BadPerson(name) {
+  this.name = name;
+  this.greet = function() { // New function every instance!
+    console.log(`Hello, ${this.name}`);
+  };
+}
+
+// Using prototype
+function GoodPerson(name) {
+  this.name = name;
+}
+
+GoodPerson.prototype.greet = function() {
+  console.log(`Hello, ${this.name}`);
+};
+// Single function shared across all instances
+```
+
+### instanceof Operator
+```javascript
+class Animal {}
+class Dog extends Animal {}
+
+const dog = new Dog();
+
+console.log(dog instanceof Dog);     // true
+console.log(dog instanceof Animal);  // true
+console.log(dog instanceof Object);  // true
+
+// Works with constructor functions too
+function Cat() {}
+const cat = new Cat();
+console.log(cat instanceof Cat);     // true
+```
+
+## Modern Alternatives
+
+### Composition over Inheritance
+```javascript
+// Favor composition for complex hierarchies
+const canWalk = (state) => ({
+  walk: () => console.log(`${state.name} is walking`)
+});
+
+const canSwim = (state) => ({
+  swim: () => console.log(`${state.name} is swimming`)
+});
+
+const canFly = (state) => ({
+  fly: () => console.log(`${state.name} is flying`)
+});
+
+const createDuck = (name) => {
+  const state = { name };
+  return Object.assign(
+    {},
+    state,
+    canWalk(state),
+    canSwim(state),
+    canFly(state)
+  );
+};
+
+const duck = createDuck('Donald');
+duck.walk();
+duck.swim();
+duck.fly();
+```
+
+### Private Fields (ES2022)
+```javascript
+class Counter {
+  #count = 0; // Truly private
+  
+  increment() {
+    this.#count++;
+    return this.#count;
+  }
+  
+  get #formatted() { // Private getter
+    return `Count: ${this.#count}`;
+  }
+}
+
+const counter = new Counter();
+counter.increment();
+console.log(counter.#count); // SyntaxError - private!
+```
+
+<KeyTakeaway>
+JavaScript's prototype system provides flexible inheritance through object linking. While ES6 classes offer familiar syntax, understanding prototypes is crucial for debugging, optimizing performance, and avoiding common pitfalls like prototype pollution. Consider composition for complex hierarchies and use modern private fields for true encapsulation.
+</KeyTakeaway>

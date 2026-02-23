@@ -7,13 +7,604 @@ icon: "video"
 description: "Understanding webrtc and its applications in modern web development"
 difficulty: "advanced"
 tags: ["real-time","p2p","media"]
-related: []
-resources: []
-status: "stub"
+related: ["web-sockets", "sse", "long-polling", "web-workers"]
+resources:
+  - title: "WebRTC Official Documentation"
+    url: "https://webrtc.org/getting-started/overview"
+  - title: "MDN WebRTC Guide"
+    url: "https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API"
+  - title: "WebRTC Samples"
+    url: "https://github.com/webrtc/samples"
+status: "published"
 ---
 
 <DefinitionBlock>
-WebRTC is a concept in frontend engineering. This article is currently being written.
+WebRTC (Web Real-Time Communication) is an open-source project that enables real-time communication of audio, video, and data directly between browsers and apps without requiring plugins or native app installations. It supports peer-to-peer connections, allowing direct communication between users with minimal latency.
 </DefinitionBlock>
 
-<StubNotice />
+## What is WebRTC?
+
+WebRTC is a collection of protocols and APIs that enable:
+
+- **Real-time audio and video streaming**: Video calls, conferences, and live streaming
+- **Peer-to-peer data transfer**: File sharing, gaming, and real-time collaboration
+- **Screen sharing**: Broadcasting your screen to other users
+- **Low-latency communication**: Direct connections between browsers
+
+Unlike traditional client-server communication, WebRTC establishes direct peer-to-peer connections when possible, reducing latency and server costs.
+
+## Core APIs
+
+### RTCPeerConnection
+
+The main interface for establishing and managing peer connections:
+
+```javascript
+// Create a peer connection
+const peerConnection = new RTCPeerConnection({
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { 
+      urls: 'turn:turnserver.com:3478',
+      username: 'user',
+      credential: 'pass'
+    }
+  ]
+});
+
+// Add local media stream
+const localStream = await navigator.mediaDevices.getUserMedia({
+  video: true,
+  audio: true
+});
+
+localStream.getTracks().forEach(track => {
+  peerConnection.addTrack(track, localStream);
+});
+
+// Handle remote stream
+peerConnection.ontrack = (event) => {
+  const remoteVideo = document.getElementById('remoteVideo');
+  remoteVideo.srcObject = event.streams[0];
+};
+```
+
+### MediaDevices API
+
+Access cameras, microphones, and screen content:
+
+```javascript
+// Get user media (camera and microphone)
+async function getLocalStream() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        facingMode: 'user' // or 'environment' for rear camera
+      },
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true
+      }
+    });
+    return stream;
+  } catch (err) {
+    console.error('Error accessing media devices:', err);
+  }
+}
+
+// Screen sharing
+async function getScreenStream() {
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: true,
+      audio: true
+    });
+    return stream;
+  } catch (err) {
+    console.error('Error sharing screen:', err);
+  }
+}
+
+// List available devices
+async function listDevices() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  
+  const videoDevices = devices.filter(d => d.kind === 'videoinput');
+  const audioDevices = devices.filter(d => d.kind === 'audioinput');
+  
+  console.log('Cameras:', videoDevices);
+  console.log('Microphones:', audioDevices);
+}
+```
+
+### RTCDataChannel
+
+For sending arbitrary data between peers:
+
+```javascript
+// Create a data channel
+const dataChannel = peerConnection.createDataChannel('messages', {
+  ordered: true, // Guarantee order
+  maxRetransmits: 3 // Retry limit
+});
+
+dataChannel.onopen = () => {
+  console.log('Data channel opened');
+  dataChannel.send('Hello from peer!');
+};
+
+dataChannel.onmessage = (event) => {
+  console.log('Received:', event.data);
+};
+
+dataChannel.onerror = (error) => {
+  console.error('Data channel error:', error);
+};
+
+// Handle incoming data channels
+peerConnection.ondatachannel = (event) => {
+  const receiveChannel = event.channel;
+  receiveChannel.onmessage = (e) => {
+    console.log('Received message:', e.data);
+  };
+};
+```
+
+## The Signaling Process
+
+WebRTC requires a signaling server to exchange connection information before peers can connect directly:
+
+### Connection Flow
+
+```javascript
+// Simplified signaling flow
+class SignalingClient {
+  constructor(socket) {
+    this.socket = socket;
+    this.peerConnection = new RTCPeerConnection(config);
+    this.setupPeerConnection();
+  }
+  
+  setupPeerConnection() {
+    // Handle ICE candidates
+    this.peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        this.socket.emit('ice-candidate', {
+          target: this.targetId,
+          candidate: event.candidate
+        });
+      }
+    };
+    
+    // Handle connection state changes
+    this.peerConnection.onconnectionstatechange = () => {
+      console.log('Connection state:', this.peerConnection.connectionState);
+    };
+  }
+  
+  // Initiator creates offer
+  async createOffer(targetId) {
+    this.targetId = targetId;
+    
+    const offer = await this.peerConnection.createOffer();
+    await this.peerConnection.setLocalDescription(offer);
+    
+    this.socket.emit('offer', {
+      target: targetId,
+      offer: offer
+    });
+  }
+  
+  // Receiver handles offer
+  async handleOffer(offer, senderId) {
+    this.targetId = senderId;
+    
+    await this.peerConnection.setRemoteDescription(offer);
+    
+    const answer = await this.peerConnection.createAnswer();
+    await this.peerConnection.setLocalDescription(answer);
+    
+    this.socket.emit('answer', {
+      target: senderId,
+      answer: answer
+    });
+  }
+  
+  // Initiator handles answer
+  async handleAnswer(answer) {
+    await this.peerConnection.setRemoteDescription(answer);
+  }
+  
+  // Both parties handle ICE candidates
+  async handleIceCandidate(candidate) {
+    await this.peerConnection.addIceCandidate(candidate);
+  }
+}
+```
+
+### Signaling Server (Node.js with Socket.io)
+
+```javascript
+const io = require('socket.io')(server);
+
+io.on('connection', (socket) => {
+  console.log('Client connected:', socket.id);
+  
+  // Join a room
+  socket.on('join-room', (roomId) => {
+    socket.join(roomId);
+    socket.to(roomId).emit('user-joined', socket.id);
+  });
+  
+  // Relay WebRTC signaling messages
+  socket.on('offer', ({ target, offer }) => {
+    socket.to(target).emit('offer', {
+      sender: socket.id,
+      offer
+    });
+  });
+  
+  socket.on('answer', ({ target, answer }) => {
+    socket.to(target).emit('answer', {
+      sender: socket.id,
+      answer
+    });
+  });
+  
+  socket.on('ice-candidate', ({ target, candidate }) => {
+    socket.to(target).emit('ice-candidate', {
+      sender: socket.id,
+      candidate
+    });
+  });
+  
+  socket.on('disconnect', () => {
+    console.log('Client disconnected:', socket.id);
+  });
+});
+```
+
+## ICE, STUN, and TURN
+
+### NAT Traversal
+
+Network Address Translation (NAT) makes peer-to-peer connection challenging. WebRTC uses ICE (Interactive Connectivity Establishment) to find the best connection path:
+
+```javascript
+// ICE candidate types
+const config = {
+  iceServers: [
+    // STUN server - helps discover public IP
+    { urls: 'stun:stun.l.google.com:19302' },
+    
+    // TURN server - relays traffic when direct connection fails
+    {
+      urls: 'turn:turn.example.com:3478',
+      username: 'webrtc_user',
+      credential: 'secure_password'
+    }
+  ],
+  iceCandidatePoolSize: 10
+};
+
+const pc = new RTCPeerConnection(config);
+
+// Monitor ICE gathering
+pc.onicegatheringstatechange = () => {
+  console.log('ICE gathering state:', pc.iceGatheringState);
+  // new -> gathering -> complete
+};
+
+pc.onicecandidate = (event) => {
+  if (event.candidate) {
+    console.log('ICE candidate:', event.candidate.type);
+    // host, srflx (STUN), relay (TURN)
+  }
+};
+```
+
+### Connection Types
+
+| Type | Description | Latency | Use Case |
+|------|-------------|---------|----------|
+| Host | Direct local connection | Lowest | Same machine |
+| Server Reflexive (STUN) | Public IP discovered via STUN | Low | Most peers |
+| Peer Reflexive | Discovered during connectivity checks | Low | NAT hole punching |
+| Relay (TURN) | Traffic relayed through server | Higher | Restricted NATs |
+
+## Complete Video Call Example
+
+```javascript
+class VideoCallManager {
+  constructor(signalingSocket) {
+    this.socket = signalingSocket;
+    this.localStream = null;
+    this.peerConnection = null;
+    this.remoteVideo = null;
+    this.localVideo = null;
+    
+    this.setupSocketListeners();
+  }
+  
+  async initLocalVideo() {
+    this.localStream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true
+    });
+    
+    this.localVideo.srcObject = this.localStream;
+  }
+  
+  createPeerConnection() {
+    const config = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' }
+      ]
+    };
+    
+    this.peerConnection = new RTCPeerConnection(config);
+    
+    // Add local stream
+    this.localStream.getTracks().forEach(track => {
+      this.peerConnection.addTrack(track, this.localStream);
+    });
+    
+    // Handle remote stream
+    this.peerConnection.ontrack = (event) => {
+      this.remoteVideo.srcObject = event.streams[0];
+    };
+    
+    // Handle ICE candidates
+    this.peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        this.socket.emit('ice-candidate', event.candidate);
+      }
+    };
+    
+    // Monitor connection state
+    this.peerConnection.onconnectionstatechange = () => {
+      console.log('Connection state:', this.peerConnection.connectionState);
+      
+      if (this.peerConnection.connectionState === 'connected') {
+        console.log('Peers connected!');
+      }
+    };
+  }
+  
+  async startCall(targetId) {
+    this.createPeerConnection();
+    
+    // Create and send offer
+    const offer = await this.peerConnection.createOffer();
+    await this.peerConnection.setLocalDescription(offer);
+    
+    this.socket.emit('call-user', {
+      target: targetId,
+      offer
+    });
+  }
+  
+  async handleIncomingCall({ sender, offer }) {
+    this.createPeerConnection();
+    
+    // Set remote description (offer)
+    await this.peerConnection.setRemoteDescription(offer);
+    
+    // Create answer
+    const answer = await this.peerConnection.createAnswer();
+    await this.peerConnection.setLocalDescription(answer);
+    
+    this.socket.emit('accept-call', {
+      target: sender,
+      answer
+    });
+  }
+  
+  async handleCallAccepted({ sender, answer }) {
+    await this.peerConnection.setRemoteDescription(answer);
+  }
+  
+  async handleIceCandidate(candidate) {
+    await this.peerConnection.addIceCandidate(candidate);
+  }
+  
+  toggleAudio() {
+    const audioTrack = this.localStream.getAudioTracks()[0];
+    if (audioTrack) {
+      audioTrack.enabled = !audioTrack.enabled;
+    }
+  }
+  
+  toggleVideo() {
+    const videoTrack = this.localStream.getVideoTracks()[0];
+    if (videoTrack) {
+      videoTrack.enabled = !videoTrack.enabled;
+    }
+  }
+  
+  endCall() {
+    if (this.peerConnection) {
+      this.peerConnection.close();
+      this.peerConnection = null;
+    }
+    
+    if (this.localStream) {
+      this.localStream.getTracks().forEach(track => track.stop());
+    }
+  }
+  
+  setupSocketListeners() {
+    this.socket.on('incoming-call', (data) => this.handleIncomingCall(data));
+    this.socket.on('call-accepted', (data) => this.handleCallAccepted(data));
+    this.socket.on('ice-candidate', (candidate) => this.handleIceCandidate(candidate));
+  }
+}
+
+// Usage
+const callManager = new VideoCallManager(socket);
+await callManager.initLocalVideo();
+
+// Start a call
+callManager.startCall('user-123');
+```
+
+## Data Channels for File Sharing
+
+```javascript
+class FileTransfer {
+  constructor(peerConnection) {
+    this.channel = peerConnection.createDataChannel('fileTransfer', {
+      ordered: true
+    });
+    
+    this.setupChannel();
+  }
+  
+  setupChannel() {
+    this.channel.onopen = () => console.log('File channel open');
+    this.channel.onerror = (err) => console.error('Channel error:', err);
+  }
+  
+  async sendFile(file) {
+    const chunkSize = 16384; // 16KB chunks
+    const fileReader = new FileReader();
+    let offset = 0;
+    
+    // Send metadata first
+    this.channel.send(JSON.stringify({
+      type: 'metadata',
+      name: file.name,
+      size: file.size,
+      mimeType: file.type
+    }));
+    
+    const readSlice = (o) => {
+      const slice = file.slice(offset, o + chunkSize);
+      fileReader.readAsArrayBuffer(slice);
+    };
+    
+    fileReader.onload = (e) => {
+      this.channel.send(e.target.result);
+      offset += e.target.result.byteLength;
+      
+      if (offset < file.size) {
+        readSlice(offset);
+      } else {
+        this.channel.send(JSON.stringify({ type: 'complete' }));
+      }
+    };
+    
+    readSlice(0);
+  }
+}
+```
+
+## Security Considerations
+
+### Permissions
+
+WebRTC requires explicit user permission for camera and microphone access:
+
+```javascript
+// Always request permissions explicitly
+async function requestPermissions() {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true
+    });
+    
+    // Stop tracks immediately after getting permission
+    stream.getTracks().forEach(track => track.stop());
+    
+    return true;
+  } catch (err) {
+    console.error('Permission denied:', err);
+    return false;
+  }
+}
+```
+
+### Secure Contexts
+
+WebRTC requires a secure context (HTTPS or localhost):
+
+```javascript
+// Check if in secure context
+if (!window.isSecureContext) {
+  console.error('WebRTC requires HTTPS');
+}
+
+// For development, use localhost or HTTPS
+if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+  console.warn('WebRTC features may not work without HTTPS');
+}
+```
+
+### End-to-End Encryption
+
+WebRTC provides built-in encryption for all media:
+
+- **SRTP** (Secure Real-time Transport Protocol) for media
+- **DTLS** (Datagram Transport Layer Security) for data channels
+- No additional encryption needed for basic security
+
+```javascript
+// DTLS role configuration
+const config = {
+  iceServers: [...],
+  // DTLS is enabled by default
+  // dtlsTransportPolicy: 'all' (default) or 'relay-only'
+};
+```
+
+## Browser Compatibility
+
+WebRTC is supported in all modern browsers:
+
+| Feature | Chrome | Firefox | Safari | Edge |
+|---------|--------|---------|--------|------|
+| getUserMedia | Yes | Yes | Yes | Yes |
+| RTCPeerConnection | Yes | Yes | Yes | Yes |
+| RTCDataChannel | Yes | Yes | Yes | Yes |
+| Screen Capture | Yes | Yes | Yes | Yes |
+| Simulcast | Yes | Yes | Partial | Yes |
+
+### Feature Detection
+
+```javascript
+function checkWebRTCSupport() {
+  const support = {
+    webRTC: !!window.RTCPeerConnection,
+    getUserMedia: !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia),
+    dataChannel: false,
+    screenShare: false
+  };
+  
+  if (support.webRTC) {
+    const pc = new RTCPeerConnection();
+    support.dataChannel = !!pc.createDataChannel;
+    pc.close();
+  }
+  
+  support.screenShare = !!navigator.mediaDevices.getDisplayMedia;
+  
+  return support;
+}
+```
+
+## Best Practices
+
+1. **Always handle errors**: Network and permission issues are common
+2. **Use TURN servers**: For production, always provide TURN servers as fallback
+3. **Implement reconnection logic**: Network changes can disconnect peers
+4. **Monitor connection quality**: Adjust bitrate based on network conditions
+5. **Clean up resources**: Close connections and stop tracks when done
+6. **Test on various networks**: Test with NATs, firewalls, and mobile networks
+7. **Respect user privacy**: Only access media when needed and provide clear UI
+
+<KeyTakeaway>
+WebRTC enables peer-to-peer real-time communication of audio, video, and data between browsers without plugins. Key components include RTCPeerConnection for managing connections, getUserMedia for accessing devices, and RTCDataChannel for arbitrary data transfer. A signaling server is required to exchange connection information before the direct peer connection is established. WebRTC uses ICE with STUN/TURN servers to handle NAT traversal and provides built-in encryption for security.
+</KeyTakeaway>

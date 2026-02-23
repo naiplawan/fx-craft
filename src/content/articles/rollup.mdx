@@ -1,19 +1,344 @@
 ---
 title: "Rollup"
 slug: "rollup"
-subtitle: "Deep dive into rollup"
+subtitle: "Next-generation ES module bundler"
 category: "bundling"
 icon: "scroll"
-description: "Understanding rollup and its applications in modern web development"
+description: "Build JavaScript libraries with efficient tree-shaking and ES module output"
 difficulty: "intermediate"
-tags: ["bundling","rollup","libraries"]
-related: []
-resources: []
-status: "stub"
+tags: ["bundling","rollup","libraries","modules"]
+related: ["webpack","esbuild","turbopack"]
+resources:
+  - title: "Rollup Guide"
+    url: "https://rollupjs.org/guide/en/"
+  - title: "Rollup vs Webpack"
+    url: "https://rollupjs.org/guide/en/#rollup-vs-webpack"
+status: "published"
 ---
 
 <DefinitionBlock>
-Rollup is a concept in frontend engineering. This article is currently being written.
+Rollup is a JavaScript module bundler that compiles small pieces of code into larger, more complex applications or libraries. It's particularly well-suited for building libraries that are published as ES modules, offering excellent tree-shaking capabilities and producing smaller, more efficient bundles than many alternatives.
 </DefinitionBlock>
 
-<StubNotice />
+## Why Rollup?
+
+### Comparison
+```javascript
+// Rollup excels at:
+// - Library bundling
+// - ES modules output
+// - Tree-shaking
+// - Smaller bundle sizes
+
+// Webpack excels at:
+// - Application bundling
+// - Code splitting
+// - Asset handling
+// - Dev server/HMR
+```
+
+### Bundle Size
+```javascript
+// Input
+export function add(a, b) { return a + b; }
+export function subtract(a, b) { return a - b; }
+
+// Rollup output (using only add):
+function add(a, b) { return a + b; }
+export { add };
+// Size: ~30 bytes
+
+// Webpack output:
+// ... webpack runtime + module system ...
+// Size: ~500+ bytes
+```
+
+## Basic Configuration
+
+### Simple Config
+```javascript
+// rollup.config.js
+export default {
+  input: 'src/index.js',
+  output: [
+    {
+      file: 'dist/bundle.cjs',
+      format: 'cjs'
+    },
+    {
+      file: 'dist/bundle.esm.js',
+      format: 'es'
+    },
+    {
+      file: 'dist/bundle.umd.js',
+      format: 'umd',
+      name: 'MyLibrary'
+    }
+  ]
+};
+```
+
+### Library Config
+```javascript
+// rollup.config.js
+import resolve from '@rollup/plugin-node-resolve';
+import commonjs from '@rollup/plugin-commonjs';
+import typescript from '@rollup/plugin-typescript';
+import { terser } from 'rollup-plugin-terser';
+
+export default {
+  input: 'src/index.ts',
+  output: [
+    {
+      file: 'dist/index.cjs',
+      format: 'cjs',
+      sourcemap: true
+    },
+    {
+      file: 'dist/index.mjs',
+      format: 'es',
+      sourcemap: true
+    }
+  ],
+  plugins: [
+    resolve(),      // Resolve node_modules
+    commonjs(),     // Convert CommonJS to ES6
+    typescript(),   // Compile TypeScript
+    terser()        // Minify
+  ],
+  external: ['react', 'react-dom'] // Don't bundle these
+};
+```
+
+## Output Formats
+
+### ES Modules (es)
+```javascript
+// Modern browsers and bundlers
+// Tree-shakeable
+export { add, subtract };
+
+// Usage
+import { add } from 'my-lib';
+```
+
+### CommonJS (cjs)
+```javascript
+// Node.js compatibility
+'use strict';
+
+Object.defineProperty(exports, '__esModule', { value: true });
+exports.add = add;
+
+function add(a, b) {
+  return a + b;
+}
+
+// Usage
+const { add } = require('my-lib');
+```
+
+### UMD (umd)
+```javascript
+// Universal - works everywhere
+(function (global, factory) {
+  typeof exports === 'object' && typeof module !== 'undefined' 
+    ? factory(exports) 
+    : typeof define === 'function' && define.amd 
+    ? define(['exports'], factory) 
+    : (global = global || self, factory(global.myLib = {}));
+}(this, function (exports) {
+  'use strict';
+  exports.add = function(a, b) { return a + b; };
+}));
+
+// Usage
+// Browser: myLib.add(1, 2)
+// AMD: require(['myLib'], ...)
+// CommonJS: require('my-lib')
+```
+
+## Plugins
+
+### Essential Plugins
+```javascript
+import resolve from '@rollup/plugin-node-resolve';
+import commonjs from '@rollup/plugin-commonjs';
+import babel from '@rollup/plugin-babel';
+
+export default {
+  input: 'src/index.js',
+  output: { file: 'dist/bundle.js', format: 'es' },
+  plugins: [
+    // Resolve imports from node_modules
+    resolve({
+      browser: true,
+      preferBuiltins: false
+    }),
+    
+    // Convert CommonJS modules to ES6
+    commonjs(),
+    
+    // Transpile with Babel
+    babel({
+      babelHelpers: 'bundled',
+      exclude: 'node_modules/**'
+    })
+  ]
+};
+```
+
+### TypeScript
+```javascript
+import typescript from '@rollup/plugin-typescript';
+
+export default {
+  input: 'src/index.ts',
+  plugins: [
+    typescript({
+      tsconfig: './tsconfig.json'
+    })
+  ]
+};
+```
+
+### CSS
+```javascript
+import postcss from 'rollup-plugin-postcss';
+
+export default {
+  plugins: [
+    postcss({
+      plugins: [require('autoprefixer')],
+      extract: true,
+      minimize: true
+    })
+  ]
+};
+```
+
+## Advanced Configuration
+
+### Code Splitting
+```javascript
+export default {
+  input: {
+    main: 'src/index.js',
+    utils: 'src/utils.js'
+  },
+  output: {
+    dir: 'dist',
+    format: 'es',
+    entryFileNames: '[name].js',
+    chunkFileNames: '[name]-[hash].js'
+  }
+};
+```
+
+### Watch Mode
+```javascript
+export default {
+  input: 'src/index.js',
+  output: { file: 'dist/bundle.js', format: 'es' },
+  watch: {
+    include: 'src/**',
+    exclude: 'node_modules/**',
+    clearScreen: false
+  }
+};
+```
+
+### Preserving Shebang
+```javascript
+import shebang from 'rollup-plugin-shebang';
+
+export default {
+  input: 'src/cli.js',
+  output: { file: 'dist/cli.js', format: 'cjs' },
+  plugins: [
+    shebang({
+      shebang: '#!/usr/bin/env node'
+    })
+  ]
+};
+```
+
+## Package.json Setup
+
+```json
+{
+  "name": "my-library",
+  "version": "1.0.0",
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "prepublish": "npm run build"
+  }
+}
+```
+
+## Best Practices
+
+### 1. External Dependencies
+```javascript
+export default {
+  external: [
+    // Don't bundle dependencies
+    'react',
+    'react-dom',
+    'lodash'
+  ]
+};
+```
+
+### 2. Multiple Outputs
+```javascript
+export default {
+  input: 'src/index.js',
+  output: [
+    // Development
+    {
+      file: 'dist/my-lib.js',
+      format: 'umd',
+      name: 'MyLib',
+      sourcemap: true
+    },
+    // Production (minified)
+    {
+      file: 'dist/my-lib.min.js',
+      format: 'umd',
+      name: 'MyLib',
+      plugins: [terser()],
+      sourcemap: true
+    }
+  ]
+};
+```
+
+### 3. Tree-Shaking Friendly
+```javascript
+// ✅ Good: Named exports
+export function add(a, b) { return a + b; }
+export function subtract(a, b) { return a - b; }
+
+// ❌ Bad: Default export with everything
+export default {
+  add: (a, b) => a + b,
+  subtract: (a, b) => a - b
+};
+```
+
+<KeyTakeaway>
+Rollup is the bundler of choice for JavaScript libraries. It produces smaller, more efficient bundles with excellent tree-shaking. Configure multiple output formats for maximum compatibility, use plugins for transpilation and asset handling, and mark dependencies as external. Perfect for publishing to npm.
+</KeyTakeaway>

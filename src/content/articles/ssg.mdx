@@ -1,19 +1,279 @@
 ---
 title: "Static Site Generation"
 slug: "ssg"
-subtitle: "Deep dive into static site generation"
+subtitle: "Pre-render pages at build time"
 category: "rendering"
 icon: "file-code"
-description: "Understanding static site generation and its applications in modern web development"
+description: "Generate static HTML at build time for fast, secure, and scalable websites"
 difficulty: "beginner"
-tags: ["ssg","jamstack","build"]
-related: []
-resources: []
-status: "stub"
+tags: ["ssg","jamstack","nextjs","gatsby"]
+related: ["ssr","streaming-ssr","edge-rendering"]
+resources:
+  - title: "Next.js - Static Generation"
+    url: "https://nextjs.org/docs/basic-features/pages#static-generation-recommended"
+  - title: "Jamstack"
+    url: "https://jamstack.org/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Static Site Generation is a concept in frontend engineering. This article is currently being written.
+Static Site Generation (SSG) is the process of generating HTML pages at build time. These pre-rendered pages can be served directly from a CDN, resulting in fast load times, improved security, and better scalability compared to server-rendered applications.
 </DefinitionBlock>
 
-<StubNotice />
+## How SSG Works
+
+```
+Build Time:
+1. Fetch data from APIs/CMS
+2. Generate HTML for each page
+3. Output static files
+
+Deployment:
+1. Upload to CDN
+2. Serve globally
+3. No server needed at runtime
+```
+
+## Next.js Implementation
+
+### getStaticProps
+```javascript
+// pages/blog/[slug].js
+export async function getStaticProps({ params }) {
+  // Runs at build time
+  const post = await fetchPost(params.slug);
+  
+  return {
+    props: {
+      post,
+    },
+    // Revalidate page every 60 seconds (ISR)
+    revalidate: 60,
+  };
+}
+
+export async function getStaticPaths() {
+  // Generate pages for all posts at build time
+  const posts = await fetchAllPosts();
+  
+  return {
+    paths: posts.map((post) => ({
+      params: { slug: post.slug },
+    })),
+    // Fallback: true = generate on first request
+    fallback: 'blocking',
+  };
+}
+
+export default function BlogPost({ post }) {
+  return (
+    <article>
+      <h1>{post.title}</h1>
+      <div dangerouslySetInnerHTML={{ __html: post.content }} />
+    </article>
+  );
+}
+```
+
+### Incremental Static Regeneration (ISR)
+```javascript
+export async function getStaticProps() {
+  const data = await fetchData();
+  
+  return {
+    props: { data },
+    // Page regenerates in background every 10 seconds
+    revalidate: 10,
+    
+    // Don't fail build if API is down
+    notFound: !data,
+  };
+}
+```
+
+## Benefits
+
+### 1. Performance
+```javascript
+// Static HTML loads instantly
+// No database queries at request time
+// CDN caching built-in
+
+// Lighthouse scores typically:
+// Performance: 95-100
+// SEO: 100
+// Best Practices: 100
+```
+
+### 2. Security
+```javascript
+// No server to hack
+// No database connections
+// No runtime vulnerabilities
+// Immutable deployments
+```
+
+### 3. Scalability
+```javascript
+// Serve from CDN edge locations
+// Handle millions of requests
+// No server scaling needed
+// Global distribution built-in
+```
+
+## Use Cases
+
+### Perfect for SSG:
+- Marketing sites
+- Documentation
+- Blogs
+- E-commerce product pages
+- Landing pages
+
+### Not suitable for:
+- User dashboards (personalized)
+- Real-time data
+- Authenticated content
+- Search results
+
+## SSG with Data Sources
+
+### Headless CMS
+```javascript
+// Contentful
+import { createClient } from 'contentful';
+
+const client = createClient({
+  space: process.env.CONTENTFUL_SPACE_ID,
+  accessToken: process.env.CONTENTFUL_ACCESS_TOKEN,
+});
+
+export async function getStaticProps() {
+  const entries = await client.getEntries({
+    content_type: 'blogPost',
+  });
+  
+  return {
+    props: {
+      posts: entries.items,
+    },
+  };
+}
+```
+
+### Markdown/MDX
+```javascript
+import { readFileSync, readdirSync } from 'fs';
+import { join } from 'path';
+import matter from 'gray-matter';
+
+export async function getStaticProps() {
+  const postsDirectory = join(process.cwd(), 'posts');
+  const filenames = readdirSync(postsDirectory);
+  
+  const posts = filenames.map((filename) => {
+    const filePath = join(postsDirectory, filename);
+    const fileContents = readFileSync(filePath, 'utf8');
+    const { data, content } = matter(fileContents);
+    
+    return {
+      slug: filename.replace(/\.md$/, ''),
+      frontmatter: data,
+      content,
+    };
+  });
+  
+  return { props: { posts } };
+}
+```
+
+## Deployment
+
+### Vercel
+```bash
+# Zero-config deployment
+vercel --prod
+
+# Automatic Git integration
+# Preview deployments for PRs
+# Edge network included
+```
+
+### Netlify
+```bash
+# Build command
+npm run build
+
+# Publish directory
+out/
+
+# Automatic form handling
+# Branch previews
+```
+
+### Cloudflare Pages
+```bash
+# Build command
+npm run build
+
+# Build output directory
+out/
+
+# Integrated with Workers
+```
+
+## Hybrid Approaches
+
+### Static + Client-side
+```javascript
+// Pre-render static parts
+// Fetch dynamic data on client
+
+function Page({ staticData }) {
+  const [dynamicData, setDynamicData] = useState(null);
+  
+  useEffect(() => {
+    // Fetch personalized data
+    fetchUserData().then(setDynamicData);
+  }, []);
+  
+  return (
+    <div>
+      <StaticContent data={staticData} />
+      {dynamicData && <UserContent data={dynamicData} />}
+    </div>
+  );
+}
+```
+
+### Static + API Routes
+```javascript
+// pages/api/search.js
+export default function handler(req, res) {
+  const { query } = req.query;
+  const results = searchIndex(query);
+  res.status(200).json(results);
+}
+
+// Client-side search
+function Search() {
+  const [results, setResults] = useState([]);
+  
+  const search = async (query) => {
+    const res = await fetch(`/api/search?query=${query}`);
+    const data = await res.json();
+    setResults(data);
+  };
+  
+  return (
+    <div>
+      <input onChange={(e) => search(e.target.value)} />
+      <Results items={results} />
+    </div>
+  );
+}
+```
+
+<KeyTakeaway>
+SSG pre-renders HTML at build time for maximum performance and security. Use it for content that doesn't change frequently. Combine with ISR for near-real-time updates, and add client-side JavaScript for dynamic functionality. Deploy to CDNs for global scale.
+</KeyTakeaway>

@@ -1,19 +1,219 @@
 ---
 title: "Code Splitting"
 slug: "code-splitting"
-subtitle: "Deep dive into code splitting"
+subtitle: "Load code on demand to improve performance"
 category: "performance"
 icon: "divide"
-description: "Understanding code splitting and its applications in modern web development"
+description: "Split your bundle into smaller chunks and load them on demand for faster initial page loads"
 difficulty: "intermediate"
-tags: ["performance","bundling","webpack"]
-related: []
-resources: []
-status: "stub"
+tags: ["performance","bundling","webpack","lazy-loading"]
+related: ["lazy-loading","tree-shaking","webpack"]
+resources:
+  - title: "React Docs - Code Splitting"
+    url: "https://react.dev/reference/react/lazy"
+  - title: "Webpack - Code Splitting"
+    url: "https://webpack.js.org/guides/code-splitting/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Code Splitting is a concept in frontend engineering. This article is currently being written.
+Code splitting is the practice of splitting your JavaScript bundle into smaller chunks that can be loaded on demand. This reduces the initial bundle size, improving Time to Interactive (TTI) and overall performance.
 </DefinitionBlock>
 
-<StubNotice />
+## Dynamic Imports
+
+### Basic Syntax
+```javascript
+// Instead of static import
+import { add } from './math';
+console.log(add(2, 3));
+
+// Use dynamic import
+import('./math').then(math => {
+  console.log(math.add(2, 3));
+});
+
+// With async/await
+async function loadMath() {
+  const math = await import('./math');
+  return math.add(2, 3);
+}
+```
+
+### Conditional Loading
+```javascript
+async function loadFeature(featureName) {
+  if (featureName === 'chart') {
+    const { Chart } = await import('./Chart');
+    return Chart;
+  }
+  
+  if (featureName === 'map') {
+    const { Map } = await import('./Map');
+    return Map;
+  }
+}
+```
+
+## React.lazy and Suspense
+
+### Route-Based Splitting
+```javascript
+import { lazy, Suspense } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+
+// Lazy load route components
+const Home = lazy(() => import('./routes/Home'));
+const About = lazy(() => import('./routes/About'));
+const Dashboard = lazy(() => import('./routes/Dashboard'));
+
+function App() {
+  return (
+    <BrowserRouter>
+      <Suspense fallback={<div>Loading...</div>}>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/about" element={<About />} />
+          <Route path="/dashboard" element={<Dashboard />} />
+        </Routes>
+      </Suspense>
+    </BrowserRouter>
+  );
+}
+```
+
+### Component-Level Splitting
+```javascript
+import { lazy, Suspense, useState } from 'react';
+
+// Lazy load heavy component
+const HeavyChart = lazy(() => import('./HeavyChart'));
+
+function Dashboard() {
+  const [showChart, setShowChart] = useState(false);
+  
+  return (
+    <div>
+      <button onClick={() => setShowChart(true)}>
+        Show Chart
+      </button>
+      
+      {showChart && (
+        <Suspense fallback={<div>Loading chart...</div>}>
+          <HeavyChart />
+        </Suspense>
+      )}
+    </div>
+  );
+}
+```
+
+## Named Exports
+
+### Wrapping Named Exports
+```javascript
+// math.js
+export const add = (a, b) => a + b;
+export const subtract = (a, b) => a - b;
+
+// Component wrapper for default export
+export const MathOperations = {
+  add,
+  subtract
+};
+
+// Lazy import with named exports
+const LazyMath = lazy(() => import('./math').then(module => ({
+  default: module.MathOperations
+})));
+```
+
+## Preloading Strategies
+
+### Prefetch on Hover
+```javascript
+function LinkWithPrefetch({ to, children }) {
+  const handleMouseEnter = () => {
+    // Prefetch route on hover
+    const About = import('./routes/About');
+  };
+  
+  return (
+    <a 
+      href={to} 
+      onMouseEnter={handleMouseEnter}
+    >
+      {children}
+    </a>
+  );
+}
+```
+
+### Webpack Magic Comments
+```javascript
+// Prefetch chunk
+const Admin = lazy(() => import(
+  /* webpackChunkName: "admin" */
+  /* webpackPrefetch: true */
+  './Admin'
+));
+
+// Preload chunk (higher priority)
+const Dashboard = lazy(() => import(
+  /* webpackChunkName: "dashboard" */
+  /* webpackPreload: true */
+  './Dashboard'
+));
+```
+
+## Bundle Analysis
+
+```javascript
+// webpack-bundle-analyzer
+// Install: npm install --save-dev webpack-bundle-analyzer
+
+// webpack.config.js
+const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
+
+module.exports = {
+  plugins: [
+    new BundleAnalyzerPlugin()
+  ]
+};
+```
+
+## Best Practices
+
+### Split by Route
+```javascript
+// Each major route gets its own chunk
+const routes = [
+  {
+    path: '/',
+    component: lazy(() => import('./Home'))
+  },
+  {
+    path: '/products',
+    component: lazy(() => import('./Products'))
+  },
+  {
+    path: '/cart',
+    component: lazy(() => import('./Cart'))
+  }
+];
+```
+
+### Split Large Libraries
+```javascript
+// Load heavy libraries only when needed
+async function generatePDF() {
+  const { jsPDF } = await import('jspdf');
+  const doc = new jsPDF();
+  doc.text('Hello World', 10, 10);
+  doc.save('document.pdf');
+}
+```
+
+<KeyTakeaway>
+Code splitting improves performance by loading JavaScript on demand. Use dynamic imports for route-based and component-level splitting, wrap lazy components with Suspense, and preload strategically. Analyze your bundle regularly to identify splitting opportunities.
+</KeyTakeaway>

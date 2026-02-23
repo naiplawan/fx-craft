@@ -1,19 +1,269 @@
 ---
 title: "Server-Sent Events"
 slug: "sse"
-subtitle: "Deep dive into server-sent events"
+subtitle: "One-way real-time server-to-client streaming"
 category: "networking"
 icon: "arrow-down-circle"
-description: "Understanding server-sent events and its applications in modern web development"
+description: "Use SSE for unidirectional server-to-browser real-time updates over HTTP"
 difficulty: "intermediate"
-tags: ["http","real-time","streaming"]
-related: []
-resources: []
-status: "stub"
+tags: ["http","real-time","streaming","push"]
+related: ["websockets","long-polling","http2"]
+resources:
+  - title: "MDN - Server-Sent Events"
+    url: "https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events"
+  - title: "Can I Use - SSE"
+    url: "https://caniuse.com/eventsource"
+status: "published"
 ---
 
 <DefinitionBlock>
-Server-Sent Events is a concept in frontend engineering. This article is currently being written.
+Server-Sent Events (SSE) is a server push technology enabling a browser to receive automatic updates from a server via HTTP connection. Unlike WebSockets, SSE is unidirectional (server-to-client only), simpler to implement, automatically reconnects, and works over standard HTTP.
 </DefinitionBlock>
 
-<StubNotice />
+## SSE vs WebSockets
+
+| Feature | SSE | WebSockets |
+|---------|-----|------------|
+| Direction | Server → Client only | Bidirectional |
+| Protocol | HTTP | WebSocket (ws://) |
+| Auto-reconnect | Yes | No (manual) |
+| Binary data | No (text only) | Yes |
+| Browser support | Good (IE11 needs polyfill) | Excellent |
+| Complexity | Simple | More complex |
+| Use case | Updates, notifications | Chat, gaming |
+
+## Basic Implementation
+
+### Client-Side
+```javascript
+// Create EventSource
+const source = new EventSource('/api/events');
+
+// Listen for messages
+source.onmessage = (event) => {
+  console.log('New message:', event.data);
+  const data = JSON.parse(event.data);
+  updateUI(data);
+};
+
+// Listen for specific event types
+source.addEventListener('price-update', (event) => {
+  const price = JSON.parse(event.data);
+  updatePrice(price);
+});
+
+source.addEventListener('notification', (event) => {
+  showNotification(JSON.parse(event.data));
+});
+
+// Handle connection open
+source.onopen = () => {
+  console.log('Connection opened');
+};
+
+// Handle errors
+source.onerror = (error) => {
+  console.error('EventSource error:', error);
+  // Auto-reconnects automatically!
+};
+
+// Close connection
+function closeConnection() {
+  source.close();
+}
+```
+
+### Server-Side (Node.js)
+```javascript
+const http = require('http');
+
+const server = http.createServer((req, res) => {
+  if (req.url === '/api/events') {
+    // SSE headers
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*'
+    });
+    
+    // Send initial connection established
+    res.write('data: {"type": "connected"}\n\n');
+    
+    // Send periodic updates
+    const interval = setInterval(() => {
+      const data = {
+        timestamp: new Date().toISOString(),
+        price: Math.random() * 100
+      };
+      
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    }, 1000);
+    
+    // Clean up on disconnect
+    req.on('close', () => {
+      clearInterval(interval);
+    });
+  }
+});
+
+server.listen(3000);
+```
+
+## SSE Protocol Format
+
+```
+Format:
+id: message-id\n        <- Optional: ID for tracking
+event: custom-type\n   <- Optional: Event type name
+data: message payload\n <- Required: Data (can be multiple lines)
+retry: 5000\n          <- Optional: Reconnection time (ms)
+\n                     <- Empty line = send message
+
+Example:
+id: 123
+event: price-update
+data: {"symbol": "AAPL", "price": 150.25}
+
+id: 124
+event: price-update  
+data: {"symbol": "GOOGL", "price": 2750.00}
+
+: heartbeat comment\n  <- Comment (ignored, useful for keep-alive)
+```
+
+## Advanced Usage
+
+### With Express
+```javascript
+const express = require('express');
+const app = express();
+
+app.get('/events', (req, res) => {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  
+  // Send custom event
+  res.write('event: user-login\n');
+  res.write('data: {"user": "john"}\n\n');
+  
+  // Regular message
+  res.write('data: Hello World\n\n');
+});
+```
+
+### React Hook
+```javascript
+function useServerSentEvents(url) {
+  const [data, setData] = useState(null);
+  const [connected, setConnected] = useState(false);
+  
+  useEffect(() => {
+    const source = new EventSource(url);
+    
+    source.onopen = () => setConnected(true);
+    source.onmessage = (event) => {
+      setData(JSON.parse(event.data));
+    };
+    source.onerror = () => setConnected(false);
+    
+    return () => source.close();
+  }, [url]);
+  
+  return { data, connected };
+}
+
+// Usage
+function StockTicker() {
+  const { data, connected } = useServerSentEvents('/api/stocks');
+  
+  return (
+    <div>
+      <div>{connected ? '🟢' : '🔴'}</div>
+      {data && <div>{data.symbol}: ${data.price}</div>}
+    </div>
+  );
+}
+```
+
+### Custom Event Types
+```javascript
+// Server sends different event types
+res.write('event: stock-update\n');
+res.write('data: {"symbol": "AAPL", "price": 150}\n\n');
+
+res.write('event: notification\n');
+res.write('data: {"message": "Order completed"}\n\n');
+
+res.write('event: error\n');
+res.write('data: {"message": "Connection limit reached"}\n\n');
+
+// Client handles each type
+source.addEventListener('stock-update', handleStockUpdate);
+source.addEventListener('notification', handleNotification);
+source.addEventListener('error', handleError);
+```
+
+## Use Cases
+
+### 1. Live Updates
+```javascript
+// Stock prices, sports scores, news feeds
+// Real-time dashboards
+// System monitoring
+```
+
+### 2. Notifications
+```javascript
+// Social media notifications
+// Email alerts
+// System alerts
+```
+
+### 3. Progress Tracking
+```javascript
+// File upload progress
+// Build/deployment status
+// Long-running task updates
+```
+
+## Best Practices
+
+### 1. Connection Management
+```javascript
+// Limit concurrent connections
+// Close idle connections
+// Handle reconnections gracefully
+```
+
+### 2. Error Handling
+```javascript
+source.onerror = (error) => {
+  // Don't panic - browser auto-reconnects
+  console.log('Connection lost, retrying...');
+};
+
+// Set custom retry time (server-side)
+res.write('retry: 10000\n\n'); // Wait 10s before reconnect
+```
+
+### 3. Security
+```javascript
+// Use withSession or authentication
+app.get('/events', authenticate, (req, res) => {
+  // Only send events user is authorized for
+  const userId = req.user.id;
+  
+  res.setHeader('Content-Type', 'text/event-stream');
+  
+  // Send user-specific updates
+  userUpdates.on(userId, (update) => {
+    res.write(`data: ${JSON.stringify(update)}\n\n`);
+  });
+});
+```
+
+<KeyTakeaway>
+SSE provides simple, automatic server-to-client streaming over HTTP. Use it for live updates, notifications, and progress tracking where you only need server pushes. It auto-reconnects, works with standard HTTP infrastructure, and is easier to implement than WebSockets for unidirectional use cases.
+</KeyTakeaway>

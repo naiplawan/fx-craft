@@ -1,19 +1,399 @@
 ---
 title: "Domain-Driven Design"
 slug: "ddd"
-subtitle: "Deep dive into domain-driven design"
+subtitle: "Align software with business domains"
 category: "architecture"
 icon: "map"
-description: "Understanding domain-driven design and its applications in modern web development"
+description: "Use Domain-Driven Design principles to model complex business logic and create maintainable software"
 difficulty: "advanced"
-tags: ["architecture","patterns","modeling"]
-related: []
-resources: []
-status: "stub"
+tags: ["architecture","patterns","modeling","ddd"]
+related: ["micro-frontends","design-systems","monorepos"]
+resources:
+  - title: "Domain-Driven Design Reference"
+    url: "https://domainlanguage.com/ddd/reference/"
+  - title: "Martin Fowler - DDD"
+    url: "https://martinfowler.com/tags/domain%20driven%20design.html"
+status: "published"
 ---
 
 <DefinitionBlock>
-Domain-Driven Design is a concept in frontend engineering. This article is currently being written.
+Domain-Driven Design (DDD) is an approach to software development that focuses on modeling the business domain. It aligns software design with the actual business requirements by establishing a common language between developers and domain experts, creating bounded contexts, and using strategic patterns to manage complexity.
 </DefinitionBlock>
 
-<StubNotice />
+## Core Concepts
+
+### Ubiquitous Language
+```javascript
+// ❌ Technical terms mixed with business
+function processOrder(orderData) {
+  const dbRecord = convertToDBFormat(orderData);
+  const result = db.insert(dbRecord);
+  return result.id;
+}
+
+// ✅ Domain language only
+function placeOrder(orderRequest) {
+  const order = Order.create(orderRequest);
+  orderRepository.save(order);
+  return order.orderId;
+}
+```
+
+```javascript
+// Common language shared by team
+class Order {
+  constructor(customer, items) {
+    this.customer = customer;
+    this.lineItems = items.map(item => new LineItem(item));
+    this.status = OrderStatus.PENDING;
+    this.placedAt = new Date();
+  }
+  
+  confirm() {
+    if (this.status !== OrderStatus.PENDING) {
+      throw new Error('Only pending orders can be confirmed');
+    }
+    this.status = OrderStatus.CONFIRMED;
+    this.raiseEvent(new OrderConfirmed(this.orderId));
+  }
+  
+  cancel(reason) {
+    if (this.status === OrderStatus.SHIPPED) {
+      throw new Error('Cannot cancel shipped order');
+    }
+    this.status = OrderStatus.CANCELLED;
+    this.cancellationReason = reason;
+  }
+}
+```
+
+### Bounded Contexts
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    E-commerce System                        │
+├───────────────────────┬─────────────────────────────────────┤
+│   Sales Context       │    Inventory Context                │
+│                       │                                     │
+│   Order               │    Product                          │
+│   Customer            │    Stock                            │
+│   Pricing             │    Warehouse                        │
+│   Promotion           │    Supplier                         │
+│                       │                                     │
+│   Language:           │    Language:                        │
+│   - "Place order"     │    - "Reserve stock"                │
+│   - "Apply discount"  │    - "Check availability"           │
+└───────────────────────┴─────────────────────────────────────┘
+
+Different contexts may use same term differently:
+- Sales: Product = catalog item with price
+- Inventory: Product = physical item with stock level
+```
+
+## Building Blocks
+
+### Entities
+```javascript
+// Has identity that persists over time
+class Customer {
+  constructor(id, name, email) {
+    this.customerId = id;  // Identity
+    this.name = name;
+    this.email = email;
+  }
+  
+  changeEmail(newEmail) {
+    // Validation logic
+    if (!isValidEmail(newEmail)) {
+      throw new Error('Invalid email');
+    }
+    this.email = newEmail;
+    this.raiseEvent(new CustomerEmailChanged(this.customerId, newEmail));
+  }
+}
+```
+
+### Value Objects
+```javascript
+// Immutable, defined by attributes, no identity
+class Money {
+  constructor(amount, currency) {
+    this.amount = amount;
+    this.currency = currency;
+    Object.freeze(this);
+  }
+  
+  add(other) {
+    if (this.currency !== other.currency) {
+      throw new Error('Cannot add different currencies');
+    }
+    return new Money(this.amount + other.amount, this.currency);
+  }
+  
+  equals(other) {
+    return this.amount === other.amount && 
+           this.currency === other.currency;
+  }
+}
+
+// Usage
+const price = new Money(100, 'USD');
+const discount = new Money(10, 'USD');
+const total = price.add(discount); // New instance
+```
+
+### Aggregates
+```javascript
+// Consistency boundary, root entity controls access
+class Order extends AggregateRoot {
+  constructor(id, customerId) {
+    super(id);
+    this.customerId = customerId;
+    this.lineItems = [];
+    this.status = OrderStatus.PENDING;
+  }
+  
+  addItem(product, quantity) {
+    if (this.status !== OrderStatus.PENDING) {
+      throw new Error('Cannot modify confirmed order');
+    }
+    
+    const existingItem = this.lineItems.find(
+      item => item.productId === product.id
+    );
+    
+    if (existingItem) {
+      existingItem.increaseQuantity(quantity);
+    } else {
+      this.lineItems.push(new LineItem(product, quantity));
+    }
+    
+    this.recalculateTotal();
+  }
+  
+  removeItem(productId) {
+    this.lineItems = this.lineItems.filter(
+      item => item.productId !== productId
+    );
+    this.recalculateTotal();
+  }
+  
+  recalculateTotal() {
+    this.total = this.lineItems.reduce(
+      (sum, item) => sum.add(item.subtotal),
+      new Money(0, 'USD')
+    );
+  }
+}
+```
+
+### Domain Events
+```javascript
+class OrderConfirmed {
+  constructor(orderId, confirmedAt, customerId) {
+    this.orderId = orderId;
+    this.confirmedAt = confirmedAt;
+    this.customerId = customerId;
+  }
+}
+
+// Publishing events
+class Order {
+  confirm() {
+    this.status = OrderStatus.CONFIRMED;
+    this.addDomainEvent(new OrderConfirmed(
+      this.orderId,
+      new Date(),
+      this.customerId
+    ));
+  }
+}
+
+// Handling events
+class InventoryService {
+  handleOrderConfirmed(event) {
+    this.reserveStock(event.orderId);
+  }
+}
+
+class NotificationService {
+  handleOrderConfirmed(event) {
+    this.sendConfirmationEmail(event.customerId);
+  }
+}
+```
+
+## Strategic Design
+
+### Context Mapping
+```javascript
+// Define relationships between bounded contexts
+const contextMap = {
+  sales: {
+    relationships: {
+      inventory: {
+        type: 'customer-supplier',
+        upstream: 'inventory',
+        downstream: 'sales'
+      },
+      shipping: {
+        type: 'conformist',
+        upstream: 'shipping',
+        downstream: 'sales'
+      }
+    }
+  }
+};
+
+// Anti-corruption layer
+class InventoryAdapter {
+  constructor(inventoryService) {
+    this.inventoryService = inventoryService;
+  }
+  
+  async checkAvailability(productId, quantity) {
+    // Translate external model to our domain
+    const externalResult = await this.inventoryService.checkStock(productId);
+    return {
+      isAvailable: externalResult.stockLevel >= quantity,
+      reservedQuantity: quantity
+    };
+  }
+}
+```
+
+## Repository Pattern
+
+```javascript
+// Abstract data access
+class OrderRepository {
+  async findById(id) {
+    const data = await this.db.query('SELECT * FROM orders WHERE id = ?', [id]);
+    return this.mapToEntity(data);
+  }
+  
+  async save(order) {
+    const events = order.domainEvents;
+    
+    await this.db.transaction(async (trx) => {
+      await trx.insert('orders', this.mapToData(order));
+      
+      // Persist events for outbox pattern
+      for (const event of events) {
+        await trx.insert('domain_events', {
+          type: event.constructor.name,
+          payload: JSON.stringify(event),
+          occurred_at: new Date()
+        });
+      }
+    });
+    
+    order.clearEvents();
+  }
+}
+```
+
+## Application Services
+
+```javascript
+// Orchestrate use cases
+class OrderApplicationService {
+  constructor(orderRepository, inventoryService, paymentService) {
+    this.orderRepository = orderRepository;
+    this.inventoryService = inventoryService;
+    this.paymentService = paymentService;
+  }
+  
+  async placeOrder(command) {
+    // 1. Check inventory
+    const availability = await this.inventoryService.checkAvailability(
+      command.productId,
+      command.quantity
+    );
+    
+    if (!availability.isAvailable) {
+      throw new Error('Product out of stock');
+    }
+    
+    // 2. Create order
+    const order = new Order(
+      generateId(),
+      command.customerId
+    );
+    
+    order.addItem(
+      { id: command.productId, price: command.price },
+      command.quantity
+    );
+    
+    // 3. Process payment
+    const payment = await this.paymentService.charge(
+      command.paymentMethod,
+      order.total
+    );
+    
+    if (payment.success) {
+      order.confirm();
+    }
+    
+    // 4. Save
+    await this.orderRepository.save(order);
+    
+    // Return DTO
+    return OrderDto.from(order);
+  }
+}
+```
+
+## Frontend DDD
+
+### Module Organization
+```
+src/
+├── modules/
+│   ├── sales/
+│   │   ├── domain/
+│   │   │   ├── order.ts
+│   │   │   ├── customer.ts
+│   │   │   └── events/
+│   │   ├── application/
+│   │   │   ├── order.service.ts
+│   │   │   └── dto/
+│   │   ├── infrastructure/
+│   │   │   ├── order.repository.ts
+│   │   │   └── api/
+│   │   └── presentation/
+│   │       ├── components/
+│   │       └── hooks/
+│   └── inventory/
+│       └── ...
+```
+
+### State Management
+```javascript
+// Domain logic in store
+const orderStore = createStore({
+  state: () => ({
+    order: null
+  }),
+  
+  actions: {
+    addItem(product, quantity) {
+      // Domain logic here
+      if (this.order.status !== 'PENDING') {
+        throw new Error('Cannot modify order');
+      }
+      this.order.addItem(product, quantity);
+    },
+    
+    confirm() {
+      this.order.confirm();
+      // Emit event
+      eventBus.emit('order:confirmed', this.order);
+    }
+  }
+});
+```
+
+<KeyTakeaway>
+DDD aligns software with business by establishing ubiquitous language, creating bounded contexts, and using tactical patterns like entities, value objects, aggregates, and domain events. In frontend applications, focus on domain modeling in state management and clear module boundaries. DDD shines in complex domains where business logic is intricate.
+</KeyTakeaway>

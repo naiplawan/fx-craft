@@ -1,19 +1,390 @@
 ---
 title: "Generators"
 slug: "generators"
-subtitle: "Deep dive into generators"
+subtitle: "Functions that can pause and resume execution"
 category: "javascript-core"
-icon: "refresh-ccw"
-description: "Understanding generators and its applications in modern web development"
+icon: "refresh-cw"
+description: "Master JavaScript generators for lazy evaluation, async iteration, and creating custom iterables"
 difficulty: "advanced"
-tags: ["javascript","iterators","async"]
-related: []
-resources: []
-status: "stub"
+tags: ["javascript","iteration","async","functions"]
+related: ["promises","async-await","event-loop"]
+resources:
+  - title: "MDN - Generator Functions"
+    url: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/function*"
+  - title: "Exploring ES6 - Generators"
+    url: "https://exploringjs.com/es6/ch_generators.html"
+status: "published"
 ---
 
 <DefinitionBlock>
-Generators is a concept in frontend engineering. This article is currently being written.
+Generators are special functions that can be paused and resumed, yielding multiple values over time. They implement the Iterator protocol and provide a powerful mechanism for lazy evaluation, async flow control, and creating infinite sequences.
 </DefinitionBlock>
 
-<StubNotice />
+## Basic Syntax
+
+### Generator Function Declaration
+```javascript
+function* simpleGenerator() {
+  yield 1;
+  yield 2;
+  yield 3;
+}
+
+const gen = simpleGenerator();
+
+console.log(gen.next()); // { value: 1, done: false }
+console.log(gen.next()); // { value: 2, done: false }
+console.log(gen.next()); // { value: 3, done: false }
+console.log(gen.next()); // { value: undefined, done: true }
+```
+
+### Key Characteristics
+```javascript
+function* generator() {
+  console.log('Start');
+  yield 'First pause';
+  console.log('Resumed');
+  yield 'Second pause';
+  console.log('End');
+}
+
+const gen = generator();
+// Nothing logged yet!
+
+gen.next(); // Logs: 'Start', returns first yield
+gen.next(); // Logs: 'Resumed', returns second yield
+gen.next(); // Logs: 'End', returns { done: true }
+```
+
+## The Iterator Protocol
+
+### Automatic Iteration
+```javascript
+function* countTo(n) {
+  for (let i = 1; i <= n; i++) {
+    yield i;
+  }
+}
+
+// for...of loop
+for (const num of countTo(5)) {
+  console.log(num); // 1, 2, 3, 4, 5
+}
+
+// Spread operator
+const numbers = [...countTo(3)]; // [1, 2, 3]
+
+// Destructuring
+const [first, second] = countTo(5); // first=1, second=2
+```
+
+### Manual Control
+```javascript
+function* example() {
+  yield 'A';
+  yield 'B';
+  yield 'C';
+}
+
+const gen = example();
+
+// Each next() returns IteratorResult
+let result = gen.next();
+while (!result.done) {
+  console.log(result.value);
+  result = gen.next();
+}
+```
+
+## Two-Way Communication
+
+### Sending Values to Generator
+```javascript
+function* twoWay() {
+  const x = yield 'Send me a value';
+  console.log('Received:', x);
+  
+  const y = yield 'Send another';
+  console.log('Received:', y);
+  
+  return x + y;
+}
+
+const gen = twoWay();
+
+console.log(gen.next());           // { value: 'Send me a value', done: false }
+console.log(gen.next(10));         // Received: 10, { value: 'Send another', done: false }
+console.log(gen.next(20));         // Received: 20, { value: 30, done: true }
+```
+
+### Error Handling
+```javascript
+function* errorHandling() {
+  try {
+    yield 'Step 1';
+    yield 'Step 2';
+  } catch (error) {
+    yield `Caught: ${error.message}`;
+  }
+  yield 'Step 3';
+}
+
+const gen = errorHandling();
+
+gen.next();                          // { value: 'Step 1', done: false }
+gen.throw(new Error('Something wrong')); // Catches and continues
+gen.next();                          // { value: 'Step 3', done: false }
+```
+
+## Practical Use Cases
+
+### Infinite Sequences
+```javascript
+function* fibonacci() {
+  let a = 0, b = 1;
+  
+  while (true) {
+    yield a;
+    [a, b] = [b, a + b];
+  }
+}
+
+const fib = fibonacci();
+
+// Get first 10 fibonacci numbers
+for (let i = 0; i < 10; i++) {
+  console.log(fib.next().value);
+}
+// 0, 1, 1, 2, 3, 5, 8, 13, 21, 34
+```
+
+### Lazy Evaluation
+```javascript
+function* map(iterable, fn) {
+  for (const item of iterable) {
+    yield fn(item);
+  }
+}
+
+function* filter(iterable, predicate) {
+  for (const item of iterable) {
+    if (predicate(item)) {
+      yield item;
+    }
+  }
+}
+
+function* take(iterable, n) {
+  let count = 0;
+  for (const item of iterable) {
+    if (count >= n) return;
+    yield item;
+    count++;
+  }
+}
+
+// Compose operations lazily
+const numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+const result = take(
+  filter(
+    map(numbers, x => x * x),
+    x => x > 10
+  ),
+  3
+);
+
+console.log([...result]); // [16, 25, 36]
+// Only processes needed items, not entire array
+```
+
+### State Machines
+```javascript
+function* trafficLight() {
+  while (true) {
+    yield 'GREEN';   // Cars go
+    yield 'YELLOW';  // Cars slow
+    yield 'RED';     // Cars stop
+  }
+}
+
+const light = trafficLight();
+
+// Simulate traffic light cycles
+setInterval(() => {
+  console.log(light.next().value);
+}, 2000);
+```
+
+## Async Generators
+
+### Async Generator Functions
+```javascript
+async function* fetchPages(url) {
+  let nextUrl = url;
+  
+  while (nextUrl) {
+    const response = await fetch(nextUrl);
+    const data = await response.json();
+    
+    yield data.results;
+    nextUrl = data.next;
+  }
+}
+
+// Usage
+for await (const page of fetchPages('/api/items')) {
+  console.log('Got page:', page.length, 'items');
+}
+```
+
+### Combining with Regular Generators
+```javascript
+function* createAsyncTasks() {
+  yield fetch('/api/users');
+  yield fetch('/api/posts');
+  yield fetch('/api/comments');
+}
+
+async function runTasks() {
+  const tasks = [];
+  
+  // Collect all tasks
+  for (const task of createAsyncTasks()) {
+    tasks.push(task);
+  }
+  
+  // Run in parallel
+  const results = await Promise.all(tasks);
+  return results;
+}
+```
+
+## Advanced Patterns
+
+### Generator Delegation
+```javascript
+function* subGenerator() {
+  yield 'A';
+  yield 'B';
+}
+
+function* mainGenerator() {
+  yield 'Start';
+  yield* subGenerator();  // Delegate to sub-generator
+  yield 'C';
+  yield* [1, 2, 3];       // Delegate to any iterable
+  yield 'End';
+}
+
+const gen = mainGenerator();
+console.log([...gen]);
+// ['Start', 'A', 'B', 'C', 1, 2, 3, 'End']
+```
+
+### Generator Composition
+```javascript
+function* range(start, end) {
+  for (let i = start; i <= end; i++) {
+    yield i;
+  }
+}
+
+function* enumerate(iterable, start = 0) {
+  let index = start;
+  for (const item of iterable) {
+    yield [index++, item];
+  }
+}
+
+function* zip(...iterables) {
+  const iterators = iterables.map(i => i[Symbol.iterator]());
+  
+  while (true) {
+    const results = iterators.map(it => it.next());
+    if (results.some(r => r.done)) return;
+    yield results.map(r => r.value);
+  }
+}
+
+// Usage
+const numbers = range(1, 5);
+const letters = ['a', 'b', 'c', 'd', 'e'];
+
+for (const [num, letter] of zip(numbers, letters)) {
+  console.log(num, letter);
+}
+// 1 a, 2 b, 3 c, 4 d, 5 e
+```
+
+### Coroutine Pattern
+```javascript
+function* coroutine(generatorFn) {
+  const gen = generatorFn();
+  
+  function handle(result) {
+    if (result.done) return Promise.resolve(result.value);
+    
+    return Promise.resolve(result.value)
+      .then(res => handle(gen.next(res)))
+      .catch(err => handle(gen.throw(err)));
+  }
+  
+  return handle(gen.next());
+}
+
+// Usage
+const result = coroutine(function* () {
+  const user = yield fetchUser(1);
+  const posts = yield fetchPosts(user.id);
+  return posts;
+});
+
+result.then(posts => console.log(posts));
+```
+
+## Real-World Applications
+
+### Redux-Saga Pattern
+```javascript
+function* fetchUserSaga(action) {
+  try {
+    yield put({ type: 'FETCH_USER_START' });
+    const user = yield call(fetchUserAPI, action.payload);
+    yield put({ type: 'FETCH_USER_SUCCESS', payload: user });
+  } catch (error) {
+    yield put({ type: 'FETCH_USER_ERROR', payload: error.message });
+  }
+}
+
+// Effects are just descriptions
+const put = (action) => ({ type: 'PUT', action });
+const call = (fn, ...args) => ({ type: 'CALL', fn, args });
+```
+
+### Streaming Data Processing
+```javascript
+async function* streamProcessor(stream) {
+  const reader = stream.getReader();
+  
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      
+      // Process chunks as they arrive
+      yield processChunk(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+// Process large file without loading into memory
+for await (const chunk of streamProcessor(response.body)) {
+  await saveToDatabase(chunk);
+}
+```
+
+<KeyTakeaway>
+Generators provide a powerful mechanism for lazy evaluation, implementing custom iteration logic, and managing complex async flows. They are the foundation for patterns like Redux-Saga and enable efficient handling of infinite sequences and streaming data. Master the `yield`/`next()` protocol and consider async generators for modern async iteration needs.
+</KeyTakeaway>

@@ -1,19 +1,260 @@
 ---
 title: "Turbopack"
 slug: "turbopack"
-subtitle: "Deep dive into turbopack"
+subtitle: "Rust-powered successor to Webpack"
 category: "bundling"
 icon: "wind"
-description: "Understanding turbopack and its applications in modern web development"
+description: "Next-generation bundler built in Rust for instant HMR and fast production builds"
 difficulty: "intermediate"
-tags: ["bundling","turbopack","rust"]
-related: []
-resources: []
-status: "stub"
+tags: ["bundling","turbopack","rust","performance"]
+related: ["vite","webpack","esbuild"]
+resources:
+  - title: "Turbopack Documentation"
+    url: "https://turbo.build/pack"
+  - title: "Turbopack vs Webpack"
+    url: "https://turbo.build/pack/docs/comparisons/webpack"
+status: "published"
 ---
 
 <DefinitionBlock>
-Turbopack is a concept in frontend engineering. This article is currently being written.
+Turbopack is an incremental bundler built in Rust, designed as the successor to Webpack. It provides extremely fast HMR (Hot Module Replacement) and optimized production builds by leveraging Rust's performance and modern incremental computation architecture.
 </DefinitionBlock>
 
-<StubNotice />
+## Why Turbopack?
+
+### Performance Comparison
+```
+Cold Start:
+Webpack:     8.5 seconds
+Vite:        1.8 seconds  
+Turbopack:   0.5 seconds
+
+HMR Update:
+Webpack:     250ms
+Vite:        50ms
+Turbopack:   10ms
+
+Production Build:
+Webpack:     45 seconds
+Vite:        15 seconds
+Turbopack:   12 seconds
+```
+
+### Architecture
+```
+Turbopack Engine:
+┌─────────────────────────────────────┐
+│         Incremental Engine          │
+│  ┌──────────┐     ┌──────────────┐  │
+│  │  Graph   │────▶│  Task System │  │
+│  └──────────┘     └──────────────┘  │
+│        │                   │        │
+│        ▼                   ▼        │
+│  ┌────────────────────────────────┐ │
+│  │      Persistent Caching       │ │
+│  └────────────────────────────────┘ │
+└─────────────────────────────────────┘
+           │
+           ▼
+    ┌─────────────┐
+    │  Optimized  │
+    │    Output   │
+    └─────────────┘
+```
+
+## Key Features
+
+### Incremental Compilation
+```javascript
+// Turbopack only recompiles what changed
+// Uses fine-grained dependency tracking
+
+// Change in Button.tsx
+function Button() {
+  return <button>New Label</button>; // Only this file recompiled
+}
+
+// Not entire module graph like Webpack
+```
+
+### Persistent Caching
+```javascript
+// Turbocache persists across restarts
+// .next/cache/turbopack
+
+// First run: Build everything
+// Second run: Load from cache instantly
+// CI builds: Share cache between runs
+```
+
+### Native Rust Performance
+```rust
+// Core bundling logic in Rust
+// Memory-safe, zero-cost abstractions
+// Parallel processing by default
+
+// Example: Module graph building
+pub async fn build_module_graph(
+    &self,
+    entries: Vec<Vc<Box< dyn Module >>>>,
+) -> Result<Vc<ModuleGraph>> {
+    // Parallel module resolution
+    // Incremental updates
+    // Lazy evaluation
+}
+```
+
+## Using Turbopack
+
+### Next.js
+```javascript
+// next.config.js
+module.exports = {
+  // Enable Turbopack (Next.js 13+)
+  experimental: {
+    turbo: {
+      // Module resolution rules
+      resolveAlias: {
+        underscore: 'lodash',
+        'my-lib': './custom-lib'
+      },
+      
+      // Loader configuration
+      loaders: {
+        // Custom loaders
+        '.svg': ['@svgr/webpack']
+      }
+    }
+  }
+};
+```
+
+```bash
+# Run with Turbopack
+next dev --turbo
+
+# Production build (future)
+next build --turbo
+```
+
+### Configuration
+```javascript
+// turbopack.config.js (future standalone)
+module.exports = {
+  entry: './src/index.js',
+  
+  resolve: {
+    alias: {
+      '@': './src',
+      'components': './src/components'
+    }
+  },
+  
+  module: {
+    rules: [
+      {
+        test: /\.css$/,
+        use: ['style-loader', 'css-loader', 'postcss-loader']
+      },
+      {
+        test: /\.(png|svg|jpg)$/,
+        type: 'asset'
+      }
+    ]
+  }
+};
+```
+
+## Migration from Webpack
+
+### Compatible Features
+```javascript
+// Most Webpack features work out of the box:
+// ✓ Entry points
+// ✓ Output configuration  
+// ✓ Module rules/loaders
+// ✓ Resolve aliases
+// ✓ Plugins (partial support)
+// ✓ DevServer HMR
+```
+
+### Configuration Differences
+```javascript
+// Webpack
+module.exports = {
+  module: {
+    rules: [
+      {
+        test: /\.js$/,
+        exclude: /node_modules/,
+        use: 'babel-loader'
+      }
+    ]
+  }
+};
+
+// Turbopack (simplified)
+module.exports = {
+  module: {
+    rules: [
+      {
+        test: /\.js$/,
+        use: 'builtin:swc-loader' // Built-in, no config needed
+      }
+    ]
+  }
+};
+```
+
+## Limitations
+
+### Current State
+```
+✓ Next.js dev server (stable)
+✓ Basic production builds (beta)
+✗ Standalone CLI (in development)
+✗ Full Webpack plugin ecosystem
+✗ Some advanced optimizations
+```
+
+### Not Yet Supported
+```javascript
+// Some Webpack features not available:
+- DLL Plugin
+- Module Federation
+- Some custom loaders
+- Certain optimization plugins
+```
+
+## When to Use
+
+### Use Turbopack
+```
+✓ Starting new Next.js projects
+✓ Frustrated with slow Webpack HMR
+✓ Large codebases (100k+ modules)
+✓ Developer experience priority
+```
+
+### Stick with Webpack/Vite
+```
+✗ Complex custom Webpack config
+✗ Depend on specific plugins
+✗ Need Module Federation
+✗ Non-Next.js projects (for now)
+```
+
+## Future Roadmap
+
+### Planned Features
+```
+- Standalone CLI (non-Next.js)
+- Full Webpack config compatibility
+- Enhanced production optimizations
+- Module Federation support
+- Turborepo integration
+```
+
+<KeyTakeaway>
+Turbopack delivers 10x faster HMR than Webpack through Rust-powered incremental compilation. Currently best for Next.js development with --turbo flag. While not yet feature-complete with Webpack, it's the future of JavaScript bundling at Vercel. Ideal for large projects where dev experience is critical.
+</KeyTakeaway>

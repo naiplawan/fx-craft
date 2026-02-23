@@ -1,19 +1,236 @@
 ---
 title: "Component Composition"
 slug: "composition"
-subtitle: "Deep dive into component composition"
+subtitle: "Build flexible components with composition"
 category: "architecture"
 icon: "puzzle"
-description: "Understanding component composition and its applications in modern web development"
+description: "Master component composition patterns to build flexible, reusable, and maintainable UI components"
 difficulty: "intermediate"
-tags: ["architecture","components","patterns"]
-related: []
-resources: []
-status: "stub"
+tags: ["architecture","components","patterns","react"]
+related: ["react-hooks","design-systems","ddd"]
+resources:
+  - title: "React Composition Patterns"
+    url: "https://react.dev/learn/thinking-in-react"
+  - title: "Compound Components"
+    url: "https://kentcdodds.com/blog/compound-components-with-react-hooks"
+status: "published"
 ---
 
 <DefinitionBlock>
-Component Composition is a concept in frontend engineering. This article is currently being written.
+Component Composition is the practice of building complex UIs by combining simpler components. Instead of creating monolithic components with many configuration options, composition allows you to assemble components like building blocks, providing flexibility and better separation of concerns.
 </DefinitionBlock>
 
-<StubNotice />
+## Basic Composition
+
+### Containment
+```jsx
+// Instead of:<Modal title="Settings" content={<Settings />} buttons={['Save', 'Cancel']} />
+
+// Use children:
+function Modal({ children }) {
+  return (
+    <div className="modal">
+      {children}
+    </div>
+  );
+}
+
+// Flexible usage:
+<Modal>
+  <Modal.Header>Settings</Modal.Header>
+  <Modal.Body>
+    <SettingsForm />
+  </Modal.Body>
+  <Modal.Footer>
+    <Button>Save</Button>
+    <Button variant="secondary">Cancel</Button>
+  </Modal.Footer>
+</Modal>
+```
+
+### Specialization
+```jsx
+// Base component
+function Button({ variant, children, ...props }) {
+  return (
+    <button className={`btn btn-${variant}`} {...props}>
+      {children}
+    </button>
+  );
+}
+
+// Specialized components
+function PrimaryButton(props) {
+  return <Button variant="primary" {...props} />;
+}
+
+function DangerButton(props) {
+  return <Button variant="danger" {...props} />;
+}
+
+// Usage
+<PrimaryButton onClick={handleSave}>Save Changes</PrimaryButton>
+<DangerButton onClick={handleDelete}>Delete</DangerButton>
+```
+
+## Advanced Patterns
+
+### Compound Components
+```jsx
+// Components that work together implicitly
+function Select({ children }) {
+  const [selected, setSelected] = useState(null);
+  
+  return (
+    <SelectContext.Provider value={{ selected, setSelected }}>
+      <div className="select">{children}</div>
+    </SelectContext.Provider>
+  );
+}
+
+Select.Trigger = function Trigger({ children }) {
+  const { selected } = useContext(SelectContext);
+  return <button>{selected || children}</button>;
+};
+
+Select.Option = function Option({ value, children }) {
+  const { setSelected } = useContext(SelectContext);
+  return <div onClick={() => setSelected(value)}>{children}</div>;
+};
+
+// Usage
+<Select>
+  <Select.Trigger>Choose an option</Select.Trigger>
+  <Select.Option value="a">Option A</Select.Option>
+  <Select.Option value="b">Option B</Select.Option>
+</Select>
+```
+
+### Render Props
+```jsx
+// Component that delegates rendering to a prop
+function DataFetcher({ url, render }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  
+  useEffect(() => {
+    fetch(url)
+      .then(r => r.json())
+      .then(data => {
+        setData(data);
+        setLoading(false);
+      });
+  }, [url]);
+  
+  return render({ data, loading });
+}
+
+// Usage
+<DataFetcher 
+  url="/api/users"
+  render={({ data, loading }) => (
+    loading ? <Spinner /> : <UserList users={data} />
+  )}
+/>
+```
+
+### Higher-Order Components
+```jsx
+// Function that takes a component and returns enhanced component
+function withAuth(Component) {
+  return function WrappedComponent(props) {
+    const user = useAuth();
+    
+    if (!user) return <Login />;
+    
+    return <Component {...props} user={user} />;
+  };
+}
+
+// Usage
+function Dashboard({ user }) {
+  return <div>Welcome {user.name}</div>;
+}
+
+export default withAuth(Dashboard);
+```
+
+## Best Practices
+
+### 1. Prefer Composition Over Configuration
+```jsx
+// ❌ Config-heavy
+<Card
+  title="Product"
+  image="/product.jpg"
+  description="Great product"
+  actions={['buy', 'wishlist']}
+  layout="horizontal"
+/>
+
+// ✅ Composable
+<Card>
+  <Card.Image src="/product.jpg" />
+  <Card.Content>
+    <Card.Title>Product</Card.Title>
+    <Card.Description>Great product</Card.Description>
+  </Card.Content>
+  <Card.Actions>
+    <Button>Buy</Button>
+    <Button>Wishlist</Button>
+  </Card.Actions>
+</Card>
+```
+
+### 2. Props Delegation
+```jsx
+function Input({ label, error, className, ...props }) {
+  return (
+    <div className={className}>
+      <label>{label}</label>
+      <input 
+        className={error ? 'input-error' : 'input'}
+        {...props}  // Pass all other props to input
+      />
+      {error && <span className="error">{error}</span>}
+    </div>
+  );
+}
+
+// All input attributes work
+<Input 
+  label="Email"
+  type="email"
+  placeholder="Enter email"
+  required
+  onChange={handleChange}
+  error={errors.email}
+/>
+```
+
+### 3. Slots Pattern
+```jsx
+function PageLayout({ header, sidebar, children, footer }) {
+  return (
+    <div className="layout">
+      <header>{header}</header>
+      <aside>{sidebar}</aside>
+      <main>{children}</main>
+      <footer>{footer}</footer>
+    </div>
+  );
+}
+
+// Usage
+<PageLayout
+  header={<Navigation />}
+  sidebar={<Filters />}
+  footer={<Footer />}
+>
+  <ProductGrid />
+</PageLayout>
+```
+
+<KeyTakeaway>
+Component composition provides flexibility by building UIs from smaller, reusable pieces. Use children for containment, create specialized components from generic ones, employ compound components for related UI elements, and prefer composition over extensive configuration options. This leads to more maintainable and adaptable codebases.
+</KeyTakeaway>

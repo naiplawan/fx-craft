@@ -1,19 +1,388 @@
 ---
 title: "esbuild"
 slug: "esbuild"
-subtitle: "Deep dive into esbuild"
+subtitle: "Extremely fast JavaScript bundler"
 category: "bundling"
 icon: "fast-forward"
-description: "Understanding esbuild and its applications in modern web development"
+description: "Lightning-fast bundler and minifier written in Go for rapid development builds"
 difficulty: "intermediate"
-tags: ["bundling","esbuild","go"]
-related: []
-resources: []
-status: "stub"
+tags: ["bundling","esbuild","go","performance"]
+related: ["vite","webpack","rollup"]
+resources:
+  - title: "esbuild Documentation"
+    url: "https://esbuild.github.io/"
+  - title: "esbuild API"
+    url: "https://esbuild.github.io/api/"
+status: "published"
 ---
 
 <DefinitionBlock>
-esbuild is a concept in frontend engineering. This article is currently being written.
+esbuild is an extremely fast JavaScript bundler and minifier written in Go. It handles bundling 10-100x faster than JavaScript-based alternatives like Webpack and Rollup, making it ideal for development workflows and CI/CD pipelines where speed matters.
 </DefinitionBlock>
 
-<StubNotice />
+## Performance
+
+### Build Speed Comparison
+```
+Three.js (10k modules):
+Webpack:     45 seconds
+Rollup:      32 seconds
+Parcel 2:    18 seconds
+esbuild:     0.37 seconds  ← 100x faster
+
+Large codebase (100k+ modules):
+esbuild:     2-5 seconds
+Others:      1-5 minutes
+```
+
+### Why So Fast?
+```
+1. Written in Go (compiled, parallel)
+2. Minimal AST transformations
+3. No caching overhead (fast enough without)
+4. Parallelized parsing and code generation
+5. Single-pass tree shaking
+```
+
+## Basic Usage
+
+### CLI
+```bash
+# Bundle for browser
+esbuild app.js --bundle --outfile=out.js
+
+# Watch mode
+esbuild app.js --bundle --outfile=out.js --watch
+
+# Development server
+esbuild app.js --bundle --outfile=out.js --servedir=.
+
+# Production build
+esbuild app.js --bundle --minify --outfile=out.js
+```
+
+### JavaScript API
+```javascript
+const esbuild = require('esbuild');
+
+// Simple build
+await esbuild.build({
+  entryPoints: ['app.js'],
+  bundle: true,
+  outfile: 'out.js',
+});
+
+// Multiple outputs
+await esbuild.build({
+  entryPoints: ['app.js'],
+  bundle: true,
+  splitting: true,
+  format: 'esm',
+  outdir: 'dist',
+});
+```
+
+## Configuration
+
+### Build Options
+```javascript
+await esbuild.build({
+  entryPoints: ['src/index.js'],
+  
+  // Output
+  outfile: 'dist/bundle.js',
+  format: 'esm', // or 'cjs', 'iife'
+  platform: 'browser', // or 'node'
+  target: 'es2020',
+  
+  // Bundling
+  bundle: true,
+  splitting: true, // Code splitting (ESM only)
+  minify: true,
+  sourcemap: true,
+  
+  // Optimization
+  treeShaking: true,
+  splitting: true,
+  metafile: true, // Generate build metadata
+  
+  // Advanced
+  define: {
+    'process.env.NODE_ENV': '"production"'
+  },
+  loader: {
+    '.png': 'file',
+    '.svg': 'dataurl',
+    '.css': 'css'
+  },
+  
+  // External packages
+  external: ['react', 'react-dom']
+});
+```
+
+## Features
+
+### TypeScript Support
+```javascript
+// No plugin needed!
+await esbuild.build({
+  entryPoints: ['src/index.ts'],
+  bundle: true,
+  outfile: 'dist/bundle.js',
+  // TypeScript compiled automatically
+});
+
+// JSX also works
+await esbuild.build({
+  entryPoints: ['src/app.tsx'],
+  jsx: 'automatic', // or 'transform'
+  jsxImportSource: 'react'
+});
+```
+
+### CSS Handling
+```javascript
+await esbuild.build({
+  entryPoints: ['src/index.js'],
+  bundle: true,
+  outfile: 'dist/bundle.js',
+  
+  // CSS is bundled automatically
+  // Import CSS in JS:
+  // import './styles.css';
+});
+
+// CSS as separate file
+await esbuild.build({
+  entryPoints: ['src/index.js'],
+  bundle: true,
+  outfile: 'dist/bundle.js',
+  plugins: [
+    {
+      name: 'css',
+      setup(build) {
+        build.onResolve({ filter: /\.css$/ }, args => ({
+          path: args.path,
+          namespace: 'css'
+        }));
+      }
+    }
+  ]
+});
+```
+
+### Loader Configuration
+```javascript
+await esbuild.build({
+  loader: {
+    '.png': 'file',      // Copy to output
+    '.svg': 'dataurl',   // Inline as data URL
+    '.txt': 'text',      // Import as string
+    '.json': 'json',     // Import as object
+    '.css': 'css'        // Bundle CSS
+  },
+  assetNames: 'assets/[name]-[hash]'
+});
+```
+
+## Plugins
+
+### Using Plugins
+```javascript
+const { sassPlugin } = require('esbuild-sass-plugin');
+
+await esbuild.build({
+  entryPoints: ['src/index.js'],
+  bundle: true,
+  outfile: 'dist/bundle.js',
+  plugins: [
+    sassPlugin()
+  ]
+});
+```
+
+### Custom Plugin
+```javascript
+const envPlugin = {
+  name: 'env',
+  setup(build) {
+    // Intercept import called "env"
+    build.onResolve({ filter: /^env$/ }, args => ({
+      path: args.path,
+      namespace: 'env-ns'
+    }));
+    
+    // Load path with "env-ns" namespace
+    build.onLoad({ filter: /.*/, namespace: 'env-ns' }, () => ({
+      contents: JSON.stringify(process.env),
+      loader: 'json'
+    }));
+  }
+};
+
+await esbuild.build({
+  entryPoints: ['src/index.js'],
+  bundle: true,
+  outfile: 'dist/bundle.js',
+  plugins: [envPlugin]
+});
+```
+
+## Development Workflow
+
+### Watch Mode
+```javascript
+const ctx = await esbuild.context({
+  entryPoints: ['src/index.js'],
+  bundle: true,
+  outfile: 'dist/bundle.js'
+});
+
+await ctx.watch();
+
+// Later
+await ctx.dispose();
+```
+
+### Dev Server
+```javascript
+const ctx = await esbuild.context({
+  entryPoints: ['src/index.js'],
+  bundle: true,
+  outfile: 'dist/bundle.js'
+});
+
+await ctx.serve({
+  servedir: '.',
+  port: 8000
+});
+
+console.log('Serving on http://localhost:8000');
+```
+
+### Live Reload
+```javascript
+const livereload = require('livereload');
+const connect = require('connect');
+const serveStatic = require('serve-static');
+
+const server = livereload.createServer();
+server.watch(__dirname + '/dist');
+
+connect()
+  .use(serveStatic('dist'))
+  .listen(3000);
+```
+
+## Use Cases
+
+### Vite's Dev Server
+```javascript
+// Vite uses esbuild for dev builds
+// - Lightning fast HMR
+// - On-demand compilation
+// - ES modules in dev
+```
+
+### Library Development
+```javascript
+// Build library for npm
+await esbuild.build({
+  entryPoints: ['src/index.ts'],
+  outdir: 'dist',
+  bundle: true,
+  splitting: true,
+  format: 'esm',
+  external: ['react']
+});
+```
+
+### CI/CD
+```javascript
+// Fast builds in CI
+const start = Date.now();
+
+await esbuild.build({
+  entryPoints: ['src/index.js'],
+  bundle: true,
+  minify: true,
+  outfile: 'dist/bundle.js'
+});
+
+console.log(`Built in ${Date.now() - start}ms`);
+// Output: Built in 250ms
+```
+
+## Limitations
+
+### Not 100% Webpack-Compatible
+```javascript
+// No built-in support for:
+// - Hot Module Replacement (use Vite)
+// - CSS Modules (use plugin)
+// - Some webpack-specific features
+
+// Use for:
+// - Development builds (fast)
+// - Production builds (fast minification)
+// - Libraries (clean output)
+```
+
+### Type Checking
+```javascript
+// esbuild transpiles TypeScript but doesn't type check
+// Run tsc separately for type checking:
+
+// package.json
+{
+  "scripts": {
+    "build": "tsc --noEmit && esbuild src/index.ts --bundle --outfile=dist/bundle.js"
+  }
+}
+```
+
+## Best Practices
+
+### 1. Use for Development
+```javascript
+// esbuild.config.js
+const isDev = process.env.NODE_ENV === 'development';
+
+await esbuild.build({
+  entryPoints: ['src/index.js'],
+  bundle: true,
+  outfile: 'dist/bundle.js',
+  minify: !isDev,
+  sourcemap: isDev,
+  watch: isDev
+});
+```
+
+### 2. Combine with TypeScript
+```json
+{
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && node build.js"
+  }
+}
+```
+
+### 3. External Dependencies
+```javascript
+await esbuild.build({
+  external: [
+    // Don't bundle large dependencies
+    'react',
+    'react-dom',
+    'lodash',
+    // Use peer dependencies
+    'vue'
+  ]
+});
+```
+
+<KeyTakeaway>
+esbuild provides 10-100x faster builds than JavaScript bundlers by leveraging Go's performance. Use it for development builds, CI/CD, and library bundling. While it lacks some Webpack features, its speed makes it ideal for Vite's dev server and rapid development workflows. Pair with TypeScript compiler for type checking.
+</KeyTakeaway>

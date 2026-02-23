@@ -1,19 +1,239 @@
 ---
 title: "Suspense"
 slug: "suspense"
-subtitle: "Deep dive into suspense"
+subtitle: "Declarative loading states in React"
 category: "react-internals"
 icon: "loader"
-description: "Understanding suspense and its applications in modern web development"
+description: "Manage async operations and loading states with React Suspense for better UX"
 difficulty: "intermediate"
-tags: ["react","async","data-fetching"]
-related: []
-resources: []
-status: "stub"
+tags: ["react","async","data-fetching","suspense"]
+related: ["react-hooks","concurrent-react","server-components"]
+resources:
+  - title: "React Docs - Suspense"
+    url: "https://react.dev/reference/react/Suspense"
+  - title: "Data Fetching with Suspense"
+    url: "https://react.dev/blog/2022/03/29/react-v18#suspense-in-data-frameworks"
+status: "published"
 ---
 
 <DefinitionBlock>
-Suspense is a concept in frontend engineering. This article is currently being written.
+React Suspense lets you declaratively specify a loading state while waiting for child components to finish loading. It's the React way to handle asynchronous operations, providing a smooth user experience with consistent loading states.
 </DefinitionBlock>
 
-<StubNotice />
+## Basic Usage
+
+### Code Splitting with Suspense
+```javascript
+import { Suspense, lazy } from 'react';
+
+const HeavyComponent = lazy(() => import('./HeavyComponent'));
+
+function App() {
+  return (
+    <div>
+      <Header />
+      <Suspense fallback={<Spinner />}>
+        <HeavyComponent />
+      </Suspense>
+      <Footer />
+    </div>
+  );
+}
+```
+
+### Nested Suspense
+```javascript
+function Dashboard() {
+  return (
+    <Suspense fallback={<FullPageSpinner />}>
+      <Layout>
+        <Suspense fallback={<SidebarSkeleton />}>
+          <Sidebar />
+        </Suspense>
+        
+        <Suspense fallback={<MainContentSkeleton />}>
+          <MainContent />
+        </Suspense>
+      </Layout>
+    </Suspense>
+  );
+}
+```
+
+## Data Fetching with Suspense
+
+### Using a Suspense-Enabled Library
+```javascript
+import { Suspense } from 'react';
+import { useSuspenseQuery } from '@apollo/client';
+
+function UserProfile({ userId }) {
+  // This will suspend if data isn't ready
+  const { data } = useSuspenseQuery(GET_USER, {
+    variables: { id: userId }
+  });
+  
+  return <div>{data.user.name}</div>;
+}
+
+function App() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <UserProfile userId={1} />
+    </Suspense>
+  );
+}
+```
+
+### Creating Suspense-Ready Data
+```javascript
+// Wrap promise for Suspense integration
+function wrapPromise(promise) {
+  let status = 'pending';
+  let result;
+  
+  const suspender = promise.then(
+    (data) => {
+      status = 'success';
+      result = data;
+    },
+    (error) => {
+      status = 'error';
+      result = error;
+    }
+  );
+  
+  return {
+    read() {
+      if (status === 'pending') {
+        throw suspender; // Suspend
+      } else if (status === 'error') {
+        throw result; // Error boundary will catch
+      } else {
+        return result; // Return data
+      }
+    }
+  };
+}
+
+// Usage
+const userResource = wrapPromise(fetchUser(1));
+
+function User() {
+  const user = userResource.read(); // Suspends until ready
+  return <div>{user.name}</div>;
+}
+```
+
+## Error Handling
+
+### Error Boundaries
+```javascript
+import { Component } from 'react';
+
+class ErrorBoundary extends Component {
+  state = { hasError: false, error: null };
+  
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+  
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback(this.state.error);
+    }
+    return this.props.children;
+  }
+}
+
+// Usage
+<ErrorBoundary fallback={(error) => <ErrorMessage error={error} />}>
+  <Suspense fallback={<Loading />}>
+    <UserProfile />
+  </Suspense>
+</ErrorBoundary>
+```
+
+## Transition API
+
+### useTransition
+```javascript
+import { useTransition, Suspense } from 'react';
+
+function TabContainer() {
+  const [tab, setTab] = useState('home');
+  const [isPending, startTransition] = useTransition();
+  
+  const selectTab = (nextTab) => {
+    startTransition(() => {
+      setTab(nextTab);
+    });
+  };
+  
+  return (
+    <div>
+      <TabButton onClick={() => selectTab('home')}>Home</TabButton>
+      <TabButton onClick={() => selectTab('photos')}>Photos</TabButton>
+      <TabButton onClick={() => selectTab('about')}>About</TabButton>
+      
+      {isPending && <Spinner />}
+      
+      <Suspense fallback={<TabSkeleton />}>
+        <TabContent tab={tab} />
+      </Suspense>
+    </div>
+  );
+}
+```
+
+## Best Practices
+
+### Strategic Fallback Placement
+```javascript
+// Good: Specific fallback for each section
+<Layout>
+  <Suspense fallback={<NavSkeleton />}>
+    <Navigation />
+  </Suspense>
+  
+  <Suspense fallback={<ContentSkeleton />}>
+    <MainContent />
+  </Suspense>
+</Layout>
+
+// Bad: One big fallback
+<Suspense fallback={<PageSkeleton />}>
+  <Navigation />
+  <MainContent />
+  <Sidebar />
+</Suspense>
+```
+
+### Avoid Waterfalls
+```javascript
+// Waterfall: Sequential loading
+function UserProfile({ userId }) {
+  const user = useSuspenseQuery(GET_USER, { variables: { id: userId } });
+  const posts = useSuspenseQuery(GET_POSTS, { variables: { userId } }); // Waits for user
+  
+  return (...);
+}
+
+// Better: Parallel loading
+function UserProfile({ userId }) {
+  return (
+    <>
+      <Suspense fallback={<UserSkeleton />}>
+        <UserInfo userId={userId} />
+      </Suspense>
+      <Suspense fallback={<PostsSkeleton />}>
+        <UserPosts userId={userId} />
+      </Suspense>
+    </>
+  );
+}
+```
+
+<KeyTakeaway>
+Suspense provides a declarative way to handle loading states in React. Use it for code splitting and data fetching with Suspense-enabled libraries. Place Suspense boundaries strategically to show relevant loading states, and combine with Error Boundaries for complete async handling. Use transitions to avoid jarring UI updates.
+</KeyTakeaway>

@@ -1,19 +1,333 @@
 ---
 title: "Import Maps"
 slug: "import-maps"
-subtitle: "Deep dive into import maps"
+subtitle: "Control module resolution in the browser"
 category: "bundling"
 icon: "map-pin"
-description: "Understanding import maps and its applications in modern web development"
+description: "Native browser module resolution without bundlers using import maps"
 difficulty: "intermediate"
-tags: ["bundling","modules","browser"]
-related: []
-resources: []
-status: "stub"
+tags: ["bundling","modules","browser","native"]
+related: ["esm","webpack","rollup"]
+resources:
+  - title: "WICG Import Maps"
+    url: "https://github.com/WICG/import-maps"
+  - title: "MDN - Import Maps"
+    url: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script/type/importmap"
+status: "published"
 ---
 
 <DefinitionBlock>
-Import Maps is a concept in frontend engineering. This article is currently being written.
+Import Maps allow you to control how the browser resolves module specifiers in ES modules. They enable bare module imports (like `import React from 'react'`) to work natively in browsers without bundlers, mapping these specifiers to actual URLs.
 </DefinitionBlock>
 
-<StubNotice />
+## The Problem
+
+### Without Import Maps
+```html
+<!-- Must use full URLs -->
+<script type="module">
+  import React from 'https://cdn.skypack.dev/react';
+  import ReactDOM from 'https://cdn.skypack.dev/react-dom';
+  import { useState } from 'https://cdn.skypack.dev/react';
+  
+  // Or relative paths
+  import { utils } from './utils.js';
+  import { helpers } from '../lib/helpers.js';
+</script>
+```
+
+### With Import Maps
+```html
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://cdn.skypack.dev/react",
+    "react-dom": "https://cdn.skypack.dev/react-dom",
+    "utils/": "./utils/"
+  }
+}
+</script>
+
+<script type="module">
+  import React from 'react';
+  import ReactDOM from 'react-dom';
+  import { formatDate } from 'utils/dates.js';
+  
+  // Clean, works in browser without bundler!
+</script>
+```
+
+## Basic Syntax
+
+### Simple Mapping
+```html
+<script type="importmap">
+{
+  "imports": {
+    "vue": "https://unpkg.com/vue@3/dist/vue.esm-browser.js",
+    "lodash": "https://cdn.jsdelivr.net/npm/lodash-es@4/lodash.js",
+    "app": "./src/app.js",
+    "components/": "./src/components/"
+  }
+}
+</script>
+```
+
+### Scoped Imports
+```html
+<script type="importmap">
+{
+  "imports": {
+    "vue": "https://unpkg.com/vue@3/dist/vue.esm-browser.js"
+  },
+  "scopes": {
+    "/legacy/": {
+      "vue": "https://unpkg.com/vue@2/dist/vue.esm-browser.js"
+    }
+  }
+}
+</script>
+
+<!-- /legacy/app.js uses Vue 2 -->
+<script type="module" src="/legacy/app.js"></script>
+
+<!-- Other scripts use Vue 3 -->
+<script type="module" src="/app.js"></script>
+```
+
+## Use Cases
+
+### 1. Development Without Bundlers
+```html
+<!DOCTYPE html>
+<html>
+<head>
+  <script type="importmap">
+  {
+    "imports": {
+      "react": "https://esm.sh/react@18",
+      "react-dom/client": "https://esm.sh/react-dom@18/client",
+      "@components/": "./src/components/",
+      "@utils/": "./src/utils/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="module">
+    import React from 'react';
+    import { createRoot } from 'react-dom/client';
+    import App from '@components/App.js';
+    
+    const root = createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
+```
+
+### 2. CDN Module Loading
+```html
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+  import * as THREE from 'three';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+  
+  // Use Three.js without npm install!
+</script>
+```
+
+### 3. Path Mapping
+```html
+<script type="importmap">
+{
+  "imports": {
+    "@root/": "./",
+    "@src/": "./src/",
+    "@components/": "./src/components/",
+    "@utils/": "./src/utils/",
+    "@hooks/": "./src/hooks/"
+  }
+}
+</script>
+
+<script type="module">
+  import Button from '@components/Button.js';
+  import { useAuth } from '@hooks/useAuth.js';
+  import { formatDate } from '@utils/dates.js';
+</script>
+```
+
+## Dynamic Import Maps
+
+### Programmatically
+```javascript
+// Create import map dynamically
+const im = document.createElement('script');
+im.type = 'importmap';
+im.textContent = JSON.stringify({
+  imports: {
+    'app': './app.js',
+    'config': `./config.${environment}.js`
+  }
+});
+document.currentScript.after(im);
+```
+
+### Multiple Maps
+```javascript
+// Merge multiple import maps (future spec)
+// Currently only one import map supported
+```
+
+## Browser Support
+
+```javascript
+// Check support
+if (HTMLScriptElement.supports && HTMLScriptElement.supports('importmap')) {
+  // Import maps supported
+}
+
+// Polyfill for older browsers
+import 'https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js';
+```
+
+## With Bundlers
+
+### Development vs Production
+```html
+<!-- Development: Use import maps -->
+<script type="importmap">
+{
+  "imports": {
+    "react": "/node_modules/react/index.js"
+  }
+}
+</script>
+
+<!-- Production: Bundled (no import map needed) -->
+```
+
+### Build Tool Integration
+```javascript
+// Vite supports import maps
+// vite.config.js
+export default {
+  resolve: {
+    alias: {
+      '@': '/src',
+      '@components': '/src/components'
+    }
+  }
+}
+
+// These aliases work with bundler in production
+// And import maps in development
+```
+
+## Best Practices
+
+### 1. Use Trailing Slashes for Directories
+```html
+<script type="importmap">
+{
+  "imports": {
+    "components/": "./src/components/",
+    "components": "./src/components/index.js"
+  }
+}
+</script>
+
+<script type="module">
+  import Button from 'components/Button.js';     // Directory + file
+  import { init } from 'components';              // Index file
+</script>
+```
+
+### 2. Version Pinning
+```html
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react/": "https://esm.sh/react@18.2.0/"
+  }
+}
+</script>
+```
+
+### 3. External Dependencies
+```html
+<script type="importmap">
+{
+  "imports": {
+    "vue": "https://unpkg.com/vue@3/dist/vue.esm-browser.js",
+    "pinia": "https://unpkg.com/pinia/dist/pinia.esm-browser.js"
+  }
+}
+</script>
+```
+
+### 4. Fallback with es-module-shims
+```html
+<!-- Polyfill for Safari <16, Firefox <108 -->
+<script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+
+<script type="importmap">
+{
+  "imports": {
+    "app": "./src/app.js"
+  }
+}
+</script>
+```
+
+## CDN Providers
+
+### esm.sh
+```html
+<script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@18.2.0",
+    "react-dom": "https://esm.sh/react-dom@18.2.0"
+  }
+}
+</script>
+```
+
+### unpkg
+```html
+<script type="importmap">
+{
+  "imports": {
+    "vue": "https://unpkg.com/vue@3/dist/vue.esm-browser.js"
+  }
+}
+</script>
+```
+
+### jsdelivr
+```html
+<script type="importmap">
+{
+  "imports": {
+    "lodash": "https://cdn.jsdelivr.net/npm/lodash-es@4/lodash.js"
+  }
+}
+</script>
+```
+
+<KeyTakeaway>
+Import Maps enable bare module specifiers to work natively in browsers without bundlers. They bridge the gap between Node.js-style imports and browser ES modules. Use them for rapid prototyping, teaching, or production apps served via CDN. Combine with es-module-shims for broader browser support.
+</KeyTakeaway>

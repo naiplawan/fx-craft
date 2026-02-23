@@ -1,19 +1,279 @@
 ---
 title: "Core Web Vitals"
 slug: "core-web-vitals"
-subtitle: "Deep dive into core web vitals"
+subtitle: "Essential metrics for web performance"
 category: "performance"
 icon: "activity"
-description: "Understanding core web vitals and its applications in modern web development"
+description: "Understand and optimize the three Core Web Vitals metrics: LCP, FID, and CLS for better user experience"
 difficulty: "intermediate"
-tags: ["performance","metrics","lcp"]
-related: []
-resources: []
-status: "stub"
+tags: ["performance","metrics","seo","lighthouse"]
+related: ["lazy-loading","code-splitting","preloading"]
+resources:
+  - title: "web.dev - Core Web Vitals"
+    url: "https://web.dev/vitals/"
+  - title: "Google Search Console - Core Web Vitals"
+    url: "https://search.google.com/search-console/core-web-vitals"
+status: "published"
 ---
 
 <DefinitionBlock>
-Core Web Vitals is a concept in frontend engineering. This article is currently being written.
+Core Web Vitals are a set of three specific factors that Google considers important in a webpage's overall user experience. They measure loading performance, interactivity, and visual stability, and are used as ranking signals for search results.
 </DefinitionBlock>
 
-<StubNotice />
+## The Three Metrics
+
+### 1. Largest Contentful Paint (LCP)
+```javascript
+// Measures loading performance
+// Target: ≤ 2.5 seconds
+
+// Measuring LCP with Performance Observer
+new PerformanceObserver((list) => {
+  const entries = list.getEntries();
+  const lastEntry = entries[entries.length - 1];
+  console.log('LCP:', lastEntry.startTime);
+}).observe({ entryTypes: ['largest-contentful-paint'] });
+
+// Common LCP elements:
+// - Hero image
+// - Video poster
+// - Large text block
+// - Background image
+```
+
+**Optimizing LCP:**
+```javascript
+// 1. Preload critical resources
+<link rel="preload" as="image" href="/hero.jpg">
+
+// 2. Optimize images
+// Use WebP, AVIF formats
+// Implement responsive images
+<picture>
+  <source srcset="hero.avif" type="image/avif">
+  <img src="hero.jpg" alt="Hero" width="1200" height="600">
+</picture>
+
+// 3. Reduce server response time
+// Use CDN
+// Implement caching
+// Optimize database queries
+
+// 4. Remove render-blocking resources
+// Inline critical CSS
+// Defer non-critical JavaScript
+<script src="analytics.js" defer></script>
+```
+
+### 2. First Input Delay (FID) → Interaction to Next Paint (INP)
+```javascript
+// Measures interactivity
+// FID Target: ≤ 100ms
+// INP Target: ≤ 200ms (new metric replacing FID)
+
+// Measuring FID
+new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    const delay = entry.processingStart - entry.startTime;
+    console.log('FID:', delay);
+  }
+}).observe({ entryTypes: ['first-input'] });
+
+// Measuring INP (Interaction to Next Paint)
+let inpValue = 0;
+let interactions = [];
+
+new PerformanceObserver((list) => {
+  const entries = list.getEntries();
+  for (const entry of entries) {
+    // Track all interactions
+    interactions.push(entry);
+
+    // Keep only the last 10 seconds of interactions
+    const cutoff = entry.startTime - 10000;
+    interactions = interactions.filter(e => e.startTime >= cutoff);
+
+    // INP is the worst interaction latency (or 98th percentile for many interactions)
+    if (interactions.length > 0) {
+      const latencies = interactions.map(e => e.duration);
+      inpValue = Math.max(...latencies);
+      console.log('INP:', inpValue);
+    }
+  }
+}).observe({
+  type: 'event',
+  buffered: true,
+  durationThreshold: 16 // Only report interactions > 16ms
+});
+```
+
+**Optimizing FID/INP:**
+```javascript
+// 1. Break up Long Tasks
+function processLargeArray(items) {
+  const chunkSize = 50;
+  let index = 0;
+  
+  function processChunk() {
+    const chunk = items.slice(index, index + chunkSize);
+    processItems(chunk);
+    
+    index += chunkSize;
+    if (index < items.length) {
+      requestIdleCallback(processChunk);
+    }
+  }
+  
+  processChunk();
+}
+
+// 2. Use Web Workers for heavy computation
+const worker = new Worker('worker.js');
+worker.postMessage({ data: largeDataset });
+
+// 3. Reduce JavaScript execution time
+// Code splitting
+const HeavyComponent = lazy(() => import('./HeavyComponent'));
+
+// Tree shaking
+// Remove unused code
+
+// 4. Optimize event handlers
+// Debounce scroll events
+const debouncedScroll = debounce(handleScroll, 16);
+window.addEventListener('scroll', debouncedScroll);
+```
+
+### 3. Cumulative Layout Shift (CLS)
+```javascript
+// Measures visual stability
+// Target: ≤ 0.1
+
+// Measuring CLS
+let clsValue = 0;
+
+new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) {
+    if (!entry.hadRecentInput) {
+      clsValue += entry.value;
+      console.log('Current CLS:', clsValue);
+    }
+  }
+}).observe({ entryTypes: ['layout-shift'] });
+```
+
+**Optimizing CLS:**
+```html
+<!-- 1. Always include size attributes on images -->
+<img src="photo.jpg" width="800" height="600" alt="Photo">
+
+<!-- 2. Reserve space for dynamic content -->
+<div style="min-height: 200px;">
+  <!-- Content loads here -->
+</div>
+
+<!-- 3. Avoid inserting content above existing content -->
+<!-- Bad: Banner pushes content down -->
+<div id="banner">New announcement!</div>
+
+<!-- Good: Reserve space for banner -->
+<div style="height: 50px;">
+  <div id="banner">New announcement!</div>
+</div>
+
+<!-- 4. Use font-display: optional or swap -->
+<style>
+  @font-face {
+    font-family: 'Custom Font';
+    src: url('font.woff2') format('woff2');
+    font-display: swap; /* or optional */
+  }
+</style>
+```
+
+## Monitoring Tools
+
+### Chrome DevTools
+```javascript
+// Performance panel
+// - Record and analyze
+// - View LCP, FID, CLS in real-time
+
+// Lighthouse panel
+// - Run audits
+// - Get optimization suggestions
+```
+
+### Web Vitals Library
+```javascript
+import { getCLS, getFID, getFCP, getLCP, getTTFB } from 'web-vitals';
+
+getCLS(console.log);
+getFID(console.log);
+getLCP(console.log);
+getFCP(console.log); // First Contentful Paint
+getTTFB(console.log); // Time to First Byte
+
+// Send to analytics
+function sendToAnalytics(metric) {
+  const body = JSON.stringify(metric);
+  
+  // Use navigator.sendBeacon for reliable delivery
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon('/analytics', body);
+  } else {
+    fetch('/analytics', { body, method: 'POST', keepalive: true });
+  }
+}
+
+getCLS(sendToAnalytics);
+getFID(sendToAnalytics);
+getLCP(sendToAnalytics);
+```
+
+### Real User Monitoring (RUM)
+```javascript
+// Track Core Web Vitals for actual users
+import { getCLS, getFID, getLCP } from 'web-vitals';
+
+function reportWebVitals({ name, delta, id }) {
+  // Send to Google Analytics
+  gtag('event', name, {
+    event_category: 'Web Vitals',
+    value: Math.round(name === 'CLS' ? delta * 1000 : delta),
+    event_label: id,
+    non_interaction: true,
+  });
+}
+
+getCLS(reportWebVitals);
+getFID(reportWebVitals);
+getLCP(reportWebVitals);
+```
+
+## Performance Budgets
+
+```javascript
+// Set budgets in your build tool
+// webpack.config.js
+module.exports = {
+  performance: {
+    maxEntrypointSize: 250000, // 250kb
+    maxAssetSize: 250000,
+    hints: 'error'
+  }
+};
+
+// Use Lighthouse CI for automated testing
+// .github/workflows/ci.yml
+- name: Audit URLs using Lighthouse
+  uses: treosh/lighthouse-ci-action@v9
+  with:
+    urls: |
+      https://example.com/
+    budgetPath: ./budget.json
+```
+
+<KeyTakeaway>
+Core Web Vitals are essential for user experience and SEO. Focus on LCP (loading), FID/INP (interactivity), and CLS (visual stability). Use the web-vitals library to measure in production, optimize critical rendering paths, and set performance budgets to maintain fast experiences.
+</KeyTakeaway>

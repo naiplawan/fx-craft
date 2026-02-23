@@ -1,19 +1,264 @@
 ---
 title: "HTTP/2"
 slug: "http2"
-subtitle: "Deep dive into http/2"
+subtitle: "Major revision improving web performance"
 category: "networking"
 icon: "zap"
-description: "Understanding http/2 and its applications in modern web development"
+description: "Learn how HTTP/2 multiplexing, header compression, and server push improve page load performance"
 difficulty: "intermediate"
-tags: ["http","protocol","performance"]
-related: []
-resources: []
-status: "stub"
+tags: ["http","protocol","performance","networking"]
+related: ["http3","cors","web-workers"]
+resources:
+  - title: "Google Developers - HTTP/2"
+    url: "https://developers.google.com/web/fundamentals/performance/http2"
+  - title: "HTTP/2 RFC"
+    url: "https://tools.ietf.org/html/rfc7540"
+status: "published"
 ---
 
 <DefinitionBlock>
-HTTP/2 is a concept in frontend engineering. This article is currently being written.
+HTTP/2 is a major revision of the HTTP protocol that brings significant performance improvements through multiplexing, header compression, and server push. It maintains backward compatibility with HTTP/1.1 semantics while solving head-of-line blocking and reducing latency.
 </DefinitionBlock>
 
-<StubNotice />
+## Key Features
+
+### 1. Multiplexing
+```
+HTTP/1.1:                    HTTP/2:
+Connection 1: CSS ──────     Single Connection:
+Connection 2: JS ────────    Stream 1: CSS ──┐
+Connection 3: Image ────     Stream 2: JS ───┼── Interleaved
+Connection 4: Image ────     Stream 3: Image─┘
+Connection 5: Image ────     Stream 4: Image
+
+6 connections                1 connection
+Head-of-line blocking        No blocking
+```
+
+Multiple requests share a single TCP connection, interleaved frame by frame.
+
+### 2. Header Compression (HPACK)
+```
+HTTP/1.1 Request #1:         HTTP/2 Request #1:
+GET /page1 HTTP/1.1          :method: GET
+Host: example.com            :path: /page1
+Accept: text/html            :authority: example.com
+Accept-Language: en-US       :scheme: https
+Accept-Encoding: gzip
+User-Agent: Mozilla/5.0...
+Cookie: session=abc123...
+(~400 bytes)
+
+HTTP/1.1 Request #2:         HTTP/2 Request #2:
+GET /page2 HTTP/1.1          :path: /page2
+Host: example.com            (10 bytes - referenced from table)
+Accept: text/html
+Accept-Language: en-US       
+Accept-Encoding: gzip
+User-Agent: Mozilla/5.0...
+Cookie: session=abc123...
+(~400 bytes again)
+```
+
+HPACK compresses headers and maintains a lookup table to avoid sending duplicate values.
+
+### 3. Binary Framing
+```
+HTTP/1.1 (Text):            HTTP/2 (Binary):
+GET / HTTP/1.1              ┌─────────────────┐
+Host: site.com              │ Length (24 bits)│
+                            │ Type (8 bits)   │
+                            │ Flags (8 bits)  │
+                            │ Reserved (1 bit)│
+                            │ Stream ID (31)  │
+                            │ Payload         │
+                            └─────────────────┘
+                            
+                            More efficient parsing
+                            No need to parse text
+```
+
+### 4. Stream Prioritization
+```javascript
+// Browser can indicate priority
+Stream 1: HTML (Priority: 256) ──────┐
+Stream 2: CSS (Priority: 220) ───────┤
+Stream 3: JS (Priority: 220) ────────┤ Critical resources
+Stream 4: Image (Priority: 110) ─────┤
+Stream 5: Analytics (Priority: 0) ───┘ Low priority
+
+Server sends critical resources first
+```
+
+### 5. Server Push (Deprecated)
+```javascript
+// Server can preemptively push resources
+// Client requests: index.html
+// Server pushes: styles.css, app.js
+
+// Note: Server Push is deprecated in practice
+// due to cache issues and complexity
+```
+
+## Performance Impact
+
+### Connection Reduction
+```javascript
+// HTTP/1.1: Domain sharding needed
+<link rel="stylesheet" href="https://cdn1.example.com/style.css">
+<link rel="stylesheet" href="https://cdn2.example.com/theme.css">
+<script src="https://cdn3.example.com/app.js"></script>
+// 3 connections, 3 DNS lookups, 3 TLS handshakes
+
+// HTTP/2: Single connection sufficient
+<link rel="stylesheet" href="https://example.com/style.css">
+<link rel="stylesheet" href="https://example.com/theme.css">
+<script src="https://example.com/app.js"></script>
+// 1 connection, 1 DNS lookup, 1 TLS handshake
+```
+
+### Loading Strategies Change
+```javascript
+// HTTP/1.1: Concatenation was critical
+// bundle.js (all JS combined)
+// styles.css (all CSS combined)
+
+// HTTP/2: Granular loading is fine
+// Component-based loading
+// Smaller, cacheable chunks
+```
+
+## Enabling HTTP/2
+
+### Nginx
+```nginx
+server {
+  listen 443 ssl http2;
+  
+  ssl_certificate /path/to/cert.pem;
+  ssl_certificate_key /path/to/key.pem;
+  
+  # HTTP/2 is enabled!
+}
+```
+
+### Node.js
+```javascript
+const http2 = require('http2');
+const fs = require('fs');
+
+const server = http2.createSecureServer({
+  key: fs.readFileSync('server.key'),
+  cert: fs.readFileSync('server.cert')
+});
+
+server.on('stream', (stream, headers) => {
+  stream.respond({
+    'content-type': 'text/html',
+    ':status': 200
+  });
+  stream.end('<h1>Hello HTTP/2</h1>');
+});
+
+server.listen(8443);
+```
+
+### CDN
+```javascript
+// Most CDNs enable HTTP/2 automatically
+// Cloudflare, Fastly, CloudFront, etc.
+```
+
+## Debugging HTTP/2
+
+### Browser DevTools
+```javascript
+// Chrome DevTools:
+// 1. Network tab
+// 2. Right-click columns > Enable "Protocol"
+// 3. Look for "h2" in Protocol column
+
+// Or check response headers
+// Look for: < HTTP/2 200
+```
+
+### Command Line
+```bash
+# Check HTTP/2 support
+curl -I --http2 https://example.com
+
+# Force HTTP/2
+curl --http2-prior-knowledge https://example.com
+
+# Detailed protocol info
+curl -v --http2 https://example.com 2>&1 | grep -E "(HTTP/2|TLS|ALPN)"
+```
+
+## Best Practices
+
+### HTTPS Required
+```javascript
+// HTTP/2 requires TLS (in practice)
+// Browsers only support HTTP/2 over HTTPS
+
+// Always redirect HTTP to HTTPS
+if (location.protocol !== 'https:') {
+  location.replace('https://' + location.href);
+}
+```
+
+### Optimize for HTTP/2
+```javascript
+// 1. Stop concatenating everything
+// ❌ Old approach for HTTP/1.1
+// app.bundle.js (500KB)
+
+// ✅ HTTP/2 approach
+// vendor.js (200KB - cached long-term)
+// app.js (100KB - changes often)
+// components/*.js (lazy loaded)
+
+// 2. Stop domain sharding
+// ❌ Don't do this
+<img src="https://cdn1.site.com/a.jpg">
+<img src="https://cdn2.site.com/b.jpg">
+
+// ✅ Single domain is fine
+<img src="https://cdn.site.com/a.jpg">
+<img src="https://cdn.site.com/b.jpg">
+
+// 3. Keep resources granular
+// Code splitting works great with HTTP/2
+```
+
+## HTTP/2 Limitations
+
+### Head-of-Line Blocking (TCP Level)
+```
+HTTP/2 Multiplexing:
+Stream 1: Packet 1 ────┐
+Stream 2: Packet 1 ────┤ All in one TCP connection
+Stream 3: Packet 1 ────┘
+
+If Packet 1 of Stream 1 is lost:
+- TCP requires retransmission
+- All streams blocked until retransmission
+
+This is solved by HTTP/3 (QUIC)
+```
+
+## Migration Checklist
+
+```javascript
+□ Enable HTTPS (required)
+□ Update server to support HTTP/2
+□ Test all resources load correctly
+□ Remove domain sharding
+□ Consider granular code splitting
+□ Monitor performance metrics
+□ Check third-party resources support HTTP/2
+```
+
+<KeyTakeaway>
+HTTP/2 improves performance through multiplexing, header compression, and binary framing. Use HTTPS, stop domain sharding, and embrace granular loading. It's widely supported and provides automatic performance gains for most sites.
+</KeyTakeaway>

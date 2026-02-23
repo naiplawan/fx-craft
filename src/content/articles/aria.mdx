@@ -1,19 +1,310 @@
 ---
 title: "ARIA"
 slug: "aria"
-subtitle: "Deep dive into aria"
+subtitle: "Accessible Rich Internet Applications"
 category: "accessibility"
 icon: "ear"
-description: "Understanding aria and its applications in modern web development"
+description: "Enhance accessibility with ARIA attributes when HTML semantics are insufficient"
 difficulty: "intermediate"
-tags: ["a11y","aria","screen-readers"]
-related: []
-resources: []
-status: "stub"
+tags: ["a11y","aria","screen-readers","wcag"]
+related: ["semantic-html","keyboard-navigation","focus-management"]
+resources:
+  - title: "ARIA Authoring Practices"
+    url: "https://www.w3.org/WAI/ARIA/apg/"
+  - title: "MDN - ARIA"
+    url: "https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA"
+status: "published"
 ---
 
 <DefinitionBlock>
-ARIA is a concept in frontend engineering. This article is currently being written.
+ARIA (Accessible Rich Internet Applications) is a set of attributes that define ways to make web content and web applications more accessible to people with disabilities. ARIA supplements HTML's native semantics to provide additional information to assistive technologies.
 </DefinitionBlock>
 
-<StubNotice />
+## Core ARIA Concepts
+
+### Roles
+```html
+<!-- Define what an element is or does -->
+<div role="button" tabindex="0">Click me</div>
+
+<nav role="navigation">...</nav>
+
+<div role="alert" aria-live="assertive">
+  Error: Form submission failed
+</div>
+```
+
+### Properties
+```html
+<!-- Describe characteristics -->
+<button aria-expanded="false">Menu</button>
+
+<input aria-required="true" />
+
+<div aria-hidden="true">Decorative icon</div>
+```
+
+### States
+```html
+<!-- Dynamic values that change -->
+<button aria-pressed="false">Toggle</button>
+
+<div role="checkbox" aria-checked="mixed">Select all</div>
+
+<div aria-busy="true">Loading...</div>
+```
+
+## Common ARIA Patterns
+
+### Navigation
+```html
+<nav aria-label="Main navigation">
+  <ul>
+    <li><a href="/" aria-current="page">Home</a></li>
+    <li><a href="/about">About</a></li>
+  </ul>
+</nav>
+
+<nav aria-label="Breadcrumb">
+  <ol>
+    <li><a href="/">Home</a></li>
+    <li><a href="/products">Products</a></li>
+    <li aria-current="page">Product Name</li>
+  </ol>
+</nav>
+```
+
+### Custom Buttons
+```html
+<!-- When you can't use native button -->
+<div
+  role="button"
+  tabindex="0"
+  aria-pressed="false"
+  onclick="toggle()"
+  onkeydown="handleKey(event)"
+>
+  Play
+</div>
+
+<script>
+function handleKey(event) {
+  // Enter or Space activates button
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    toggle();
+  }
+}
+</script>
+```
+
+### Modal Dialog
+```html
+<div
+  role="dialog"
+  aria-modal="true"
+  aria-labelledby="dialog-title"
+  aria-describedby="dialog-desc"
+>
+  <h2 id="dialog-title">Confirm Delete</h2>
+  <p id="dialog-desc">Are you sure?</p>
+  <button>Cancel</button>
+  <button>Delete</button>
+</div>
+```
+
+### Live Regions
+```html
+<!-- Announce dynamic content changes -->
+<div aria-live="polite" aria-atomic="true">
+  <span id="status">3 items in cart</span>
+</div>
+
+<script>
+// Screen reader announces when text changes
+document.getElementById('status').textContent = '4 items in cart';
+</script>
+
+<!-- Assertive (interrupts) -->
+<div aria-live="assertive" role="alert">
+  Session expired. Please log in again.
+</div>
+```
+
+## Form Enhancements
+
+### Label Association
+```html
+<!-- Explicit labeling -->
+<label for="email">Email Address</label>
+<input type="email" id="email" />
+
+<!-- Implicit labeling -->
+<label>
+  Email Address
+  <input type="email" />
+</label>
+
+<!-- ARIA labeling (when label isn't visible) -->
+<input 
+  type="search" 
+  aria-label="Search products"
+  placeholder="Search..."
+/>
+```
+
+### Error Messages
+```html
+<label for="username">Username</label>
+<input 
+  type="text" 
+  id="username"
+  aria-invalid="true"
+  aria-describedby="username-error"
+/>
+<span id="username-error" role="alert">
+  Username must be at least 3 characters
+</span>
+```
+
+### Required Fields
+```html
+<label for="email">
+  Email
+  <span aria-label="required">*</span>
+</label>
+<input type="email" id="email" required aria-required="true" />
+```
+
+## Complex Widgets
+
+### Tabs
+```html
+<div class="tabs">
+  <div role="tablist" aria-label="Settings">
+    <button 
+      role="tab" 
+      aria-selected="true" 
+      aria-controls="panel-1"
+      id="tab-1"
+    >
+      General
+    </button>
+    <button 
+      role="tab" 
+      aria-selected="false" 
+      aria-controls="panel-2"
+      id="tab-2"
+      tabindex="-1"
+    >
+      Privacy
+    </button>
+  </div>
+  
+  <div 
+    role="tabpanel" 
+    id="panel-1" 
+    aria-labelledby="tab-1"
+  >
+    General settings content
+  </div>
+  
+  <div 
+    role="tabpanel" 
+    id="panel-2" 
+    aria-labelledby="tab-2"
+    hidden
+  >
+    Privacy settings content
+  </div>
+</div>
+```
+
+### Accordion
+```html
+<div class="accordion">
+  <h3>
+    <button 
+      aria-expanded="false"
+      aria-controls="section1"
+      id="accordion1"
+    >
+      Section 1
+    </button>
+  </h3>
+  <div 
+    id="section1" 
+    role="region" 
+    aria-labelledby="accordion1"
+    hidden
+  >
+    <p>Section 1 content</p>
+  </div>
+</div>
+```
+
+## ARIA Rules
+
+### First Rule: Use Native HTML
+```html
+<!-- Don't do this -->
+<div role="button" tabindex="0" onclick="...">Click</div>
+
+<!-- Do this instead -->
+<button onclick="...">Click</button>
+```
+
+### Don't Change Native Semantics
+```html
+<!-- Wrong -->
+<h2 role="tab">Heading</h2>
+
+<!-- Correct -->
+<div role="tab"><h2>Heading</h2></div>
+```
+
+### All Interactive ARIA Controls Must Be Keyboard Accessible
+```javascript
+// Add keyboard support for custom controls
+element.addEventListener('keydown', (e) => {
+  switch(e.key) {
+    case 'Enter':
+    case ' ':
+      // Activate
+      break;
+    case 'ArrowDown':
+      // Next item
+      break;
+    case 'ArrowUp':
+      // Previous item
+      break;
+    case 'Escape':
+      // Close/Cancel
+      break;
+  }
+});
+```
+
+## Common Mistakes
+
+```html
+<!-- ❌ Redundant ARIA -->
+<button role="button">Click</button>
+
+<!-- ❌ Conflicting ARIA -->
+<h1 role="presentation">Title</h1>
+
+<!-- ❌ Missing labels -->
+<input type="text" placeholder="Search" />
+
+<!-- ❌ aria-hidden on focusable element -->
+<button aria-hidden="true">Click</button>
+
+<!-- ✅ Correct usage -->
+<button>Click</button>
+<input type="text" aria-label="Search" placeholder="Search" />
+```
+
+<KeyTakeaway>
+ARIA enhances accessibility when native HTML semantics aren't sufficient. Prefer native HTML elements first, then use ARIA to fill gaps. Remember that ARIA only affects the accessibility tree - you must still implement keyboard support and visual styling. Test with actual screen readers, and follow the ARIA Authoring Practices Guide for complex patterns.
+</KeyTakeaway>

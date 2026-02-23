@@ -25,7 +25,7 @@ export function ArticlesClient({ articles }: ArticlesClientProps) {
         <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-4">
           Articles
         </h1>
-        <p className="text-gray-600 dark:text-gray-400 mb-8">
+        <p className="text-gray-600 dark:text-gray-300 mb-8">
           Browse {articles.length} frontend engineering topics
         </p>
 
@@ -45,7 +45,7 @@ export function ArticlesClient({ articles }: ArticlesClientProps) {
         <ArticleGrid articles={filteredArticles} />
       ) : (
         <div className="text-center py-16">
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-gray-600 dark:text-gray-300">
             No articles found matching your criteria.
           </p>
         </div>

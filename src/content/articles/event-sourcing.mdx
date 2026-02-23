@@ -1,19 +1,347 @@
 ---
 title: "Event Sourcing"
 slug: "event-sourcing"
-subtitle: "Deep dive into event sourcing"
+subtitle: "Store state changes as events"
 category: "architecture"
 icon: "list"
-description: "Understanding event sourcing and its applications in modern web development"
+description: "Persist application state as a sequence of events rather than current state snapshots"
 difficulty: "advanced"
-tags: ["architecture","events","cqrs"]
-related: []
-resources: []
-status: "stub"
+tags: ["architecture","events","ddd","cqrs"]
+related: ["cqrs","ddd","micro-frontends"]
+resources:
+  - title: "Event Sourcing Pattern"
+    url: "https://martinfowler.com/eaaDev/EventSourcing.html"
+  - title: "Microsoft Event Sourcing"
+    url: "https://docs.microsoft.com/en-us/azure/architecture/patterns/event-sourcing"
+status: "published"
 ---
 
 <DefinitionBlock>
-Event Sourcing is a concept in frontend engineering. This article is currently being written.
+Event Sourcing is an architectural pattern where application state is stored as a sequence of events rather than just the current state. Each change is captured as an immutable event, and the current state is derived by replaying these events. This provides a complete audit trail and enables temporal queries.
 </DefinitionBlock>
 
-<StubNotice />
+## How Event Sourcing Works
+
+### Traditional CRUD
+```javascript
+// Current state only
+const user = {
+  id: 123,
+  name: 'John Doe',
+  email: 'john@example.com',
+  status: 'active'
+};
+
+// Update overwrites
+UPDATE users SET email = 'new@example.com' WHERE id = 123;
+
+// History lost!
+```
+
+### Event Sourcing
+```javascript
+// State as sequence of events
+const userEvents = [
+  { type: 'UserCreated', data: { id: 123, name: 'John', email: 'john@example.com' } },
+  { type: 'UserEmailChanged', data: { from: 'john@example.com', to: 'john.doe@example.com' } },
+  { type: 'UserEmailChanged', data: { from: 'john.doe@example.com', to: 'new@example.com' } },
+  { type: 'UserDeactivated', data: { reason: 'Account closure' } }
+];
+
+// Current state = fold all events
+const currentState = userEvents.reduce(applyEvent, {});
+// { id: 123, name: 'John', email: 'new@example.com', status: 'inactive' }
+```
+
+## Core Concepts
+
+### Events
+```javascript
+// Immutable facts about the past
+class UserCreated {
+  constructor(userId, name, email) {
+    this.type = 'UserCreated';
+    this.aggregateId = userId;
+    this.data = { userId, name, email };
+    this.timestamp = new Date();
+    this.version = 1;
+  }
+}
+
+class UserEmailChanged {
+  constructor(userId, oldEmail, newEmail) {
+    this.type = 'UserEmailChanged';
+    this.aggregateId = userId;
+    this.data = { userId, oldEmail, newEmail };
+    this.timestamp = new Date();
+    this.version = 2;
+  }
+}
+```
+
+### Aggregates
+```javascript
+class User extends Aggregate {
+  constructor() {
+    super();
+    this.userId = null;
+    this.name = null;
+    this.email = null;
+    this.status = 'pending';
+  }
+  
+  // Command handlers
+  create(userId, name, email) {
+    this.apply(new UserCreated(userId, name, email));
+  }
+  
+  changeEmail(newEmail) {
+    if (this.status === 'inactive') {
+      throw new Error('Cannot modify inactive user');
+    }
+    this.apply(new UserEmailChanged(this.userId, this.email, newEmail));
+  }
+  
+  // Event handlers (state mutations)
+  onUserCreated(event) {
+    this.userId = event.data.userId;
+    this.name = event.data.name;
+    this.email = event.data.email;
+    this.status = 'active';
+  }
+  
+  onUserEmailChanged(event) {
+    this.email = event.data.newEmail;
+  }
+}
+```
+
+### Event Store
+```javascript
+class EventStore {
+  async saveEvents(aggregateId, events, expectedVersion) {
+    // Optimistic concurrency control
+    const currentVersion = await this.getVersion(aggregateId);
+    
+    if (currentVersion !== expectedVersion) {
+      throw new ConcurrencyException();
+    }
+    
+    // Append events (never update or delete)
+    await this.db.events.insertMany(
+      events.map((e, i) => ({
+        aggregateId,
+        type: e.type,
+        data: e.data,
+        version: expectedVersion + i + 1,
+        timestamp: new Date()
+      }))
+    );
+  }
+  
+  async getEvents(aggregateId) {
+    return await this.db.events
+      .find({ aggregateId })
+      .sort({ version: 1 })
+      .toArray();
+  }
+}
+```
+
+## Benefits
+
+### 1. Complete Audit Trail
+```javascript
+// Every change recorded with metadata
+const events = await eventStore.getEvents('user-123');
+
+// Reconstruct history
+// 2024-01-01: User created by admin
+// 2024-01-05: Email changed (john → john.doe)
+// 2024-01-10: Email changed (john.doe → new)
+// 2024-01-15: Deactivated due to inactivity
+```
+
+### 2. Temporal Queries
+```javascript
+// What did the user look like on Jan 1?
+async function getUserAtVersion(userId, targetVersion) {
+  const events = await eventStore.getEventsUntil(userId, targetVersion);
+  return events.reduce(applyEvent, {});
+}
+
+// What was the account balance on Dec 31?
+const balance = await getBalanceAtDate(accountId, '2023-12-31');
+```
+
+### 3. Replay and Debug
+```javascript
+// Replay events to debug
+async function replayEvents(aggregateId, breakpoint) {
+  const events = await eventStore.getEvents(aggregateId);
+  const state = {};
+  
+  for (const event of events) {
+    applyEvent(state, event);
+    
+    if (event.id === breakpoint) {
+      console.log('State at breakpoint:', state);
+      debugger;
+    }
+  }
+}
+```
+
+## Implementation
+
+### Projection Handlers
+```javascript
+// Update read models when events occur
+class UserProjectionHandler {
+  async handleUserCreated(event) {
+    await this.readDb.users.insert({
+      userId: event.data.userId,
+      name: event.data.name,
+      email: event.data.email,
+      status: 'active',
+      createdAt: event.timestamp
+    });
+  }
+  
+  async handleUserEmailChanged(event) {
+    await this.readDb.users.update(
+      { userId: event.data.userId },
+      { 
+        email: event.data.newEmail,
+        emailHistory: { 
+          $push: { 
+            from: event.data.oldEmail,
+            changedAt: event.timestamp 
+          }
+        }
+      }
+    );
+  }
+}
+```
+
+### Snapshotting
+```javascript
+// Performance optimization for large event streams
+class SnapshotStore {
+  async saveSnapshot(aggregateId, state, version) {
+    await this.db.snapshots.updateOne(
+      { aggregateId },
+      { 
+        aggregateId,
+        state,
+        version,
+        createdAt: new Date()
+      },
+      { upsert: true }
+    );
+  }
+  
+  async loadAggregate(aggregateId) {
+    // Load latest snapshot
+    const snapshot = await this.db.snapshots.findOne({ aggregateId });
+    
+    // Load events after snapshot
+    const events = await this.eventStore.getEventsAfter(
+      aggregateId, 
+      snapshot?.version || 0
+    );
+    
+    // Replay events on snapshot
+    return events.reduce(applyEvent, snapshot?.state || {});
+  }
+}
+```
+
+## Use Cases
+
+### Financial Systems
+```javascript
+// Banking - every transaction is an event
+const accountEvents = [
+  { type: 'AccountOpened', balance: 0 },
+  { type: 'Deposit', amount: 1000, balance: 1000 },
+  { type: 'Withdrawal', amount: 200, balance: 800 },
+  { type: 'TransferSent', amount: 300, to: 'acc-456', balance: 500 }
+];
+
+// Complete transaction history
+// Balance always derived from events
+```
+
+### E-commerce Order System
+```javascript
+class Order extends Aggregate {
+  create(orderId, customerId, items) {
+    this.apply(new OrderCreated(orderId, customerId, items));
+  }
+  
+  confirm() {
+    if (this.status !== 'pending') {
+      throw new Error('Can only confirm pending orders');
+    }
+    this.apply(new OrderConfirmed(this.orderId));
+  }
+  
+  ship(trackingNumber) {
+    this.apply(new OrderShipped(this.orderId, trackingNumber));
+  }
+  
+  deliver() {
+    this.apply(new OrderDelivered(this.orderId));
+  }
+}
+```
+
+## Challenges
+
+### 1. Event Schema Evolution
+```javascript
+// Version 1 event
+{ type: 'UserCreated', data: { name: 'John' } }
+
+// Version 2 adds email
+// Need upcasters or version handling
+function upcastEvent(event) {
+  if (event.version === 1 && event.type === 'UserCreated') {
+    return {
+      ...event,
+      data: { ...event.data, email: null },
+      version: 2
+    };
+  }
+  return event;
+}
+```
+
+### 2. Complexity
+```
+- More moving parts than CRUD
+- Event versioning
+- Projection management
+- eventual consistency
+- Storage overhead
+```
+
+### 3. Querying
+```javascript
+// Events alone not good for queries
+// Need projections (CQRS)
+
+// Bad: Load all users by filtering events
+const allUsers = await eventStore
+  .find({ type: 'UserCreated' })
+  .map(e => e.data);
+
+// Good: Query projection
+const allUsers = await readDb.users.find();
+```
+
+<KeyTakeaway>
+Event Sourcing captures all state changes as immutable events, providing complete audit trails and temporal capabilities. Combine with CQRS for querying, use snapshots for performance, and implement proper event versioning. Best suited for domains requiring strong audit requirements or complex business rules.
+</KeyTakeaway>

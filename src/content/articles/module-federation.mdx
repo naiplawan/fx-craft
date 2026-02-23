@@ -1,19 +1,348 @@
 ---
 title: "Module Federation"
 slug: "module-federation"
-subtitle: "Deep dive into module federation"
+subtitle: "Share code between independent builds"
 category: "bundling"
 icon: "network"
-description: "Understanding module federation and its applications in modern web development"
+description: "Webpack Module Federation enables dynamic runtime sharing of code between independent applications"
 difficulty: "advanced"
-tags: ["bundling","webpack","micro-frontends"]
-related: []
-resources: []
-status: "stub"
+tags: ["bundling","webpack","micro-frontends","runtime"]
+related: ["micro-frontends","monorepos","webpack"]
+resources:
+  - title: "Module Federation Docs"
+    url: "https://webpack.js.org/concepts/module-federation/"
+  - title: "Zack Jackson - Module Federation"
+    url: "https://module-federation.io/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Module Federation is a concept in frontend engineering. This article is currently being written.
+Module Federation is a webpack feature that allows JavaScript applications to dynamically import code from other independently deployed applications at runtime. It enables micro-frontend architectures, plugin systems, and runtime sharing of components without building everything together.
 </DefinitionBlock>
 
-<StubNotice />
+## How It Works
+
+```
+Traditional Build:              Module Federation:
+┌──────────────┐                ┌─────────────┐      ┌─────────────┐
+│   Build      │                │   Host      │◄────►│   Remote    │
+│  Everything  │                │   (Shell)   │      │   (MFE)     │
+│   Together   │                └──────┬──────┘      └─────────────┘
+└──────────────┘                       │
+                                       │    ┌─────────────┐
+                                       └───►│   Remote 2  │
+                                            └─────────────┘
+
+One big bundle                Multiple independent bundles
+                              Shared at runtime
+```
+
+## Basic Configuration
+
+### Host (Consumer)
+```javascript
+// host/webpack.config.js
+const { ModuleFederationPlugin } = require('webpack').container;
+
+module.exports = {
+  plugins: [
+    new ModuleFederationPlugin({
+      name: 'host',
+      remotes: {
+        // Load from remote at runtime
+        app1: 'app1@https://app1.example.com/remoteEntry.js',
+        app2: 'app2@https://app2.example.com/remoteEntry.js',
+      },
+      shared: {
+        // Share dependencies
+        react: { singleton: true },
+        'react-dom': { singleton: true },
+      },
+    }),
+  ],
+};
+
+// host/src/App.js
+import React, { Suspense } from 'react';
+
+// Dynamic import from remote
+const RemoteApp1 = React.lazy(() => import('app1/App'));
+const RemoteApp2 = React.lazy(() => import('app2/App'));
+
+function App() {
+  return (
+    <div>
+      <Header />
+      <Suspense fallback={<div>Loading...</div>}>
+        <RemoteApp1 />
+        <RemoteApp2 />
+      </Suspense>
+    </div>
+  );
+}
+```
+
+### Remote (Provider)
+```javascript
+// remote/webpack.config.js
+const { ModuleFederationPlugin } = require('webpack').container;
+
+module.exports = {
+  plugins: [
+    new ModuleFederationPlugin({
+      name: 'app1',
+      filename: 'remoteEntry.js',
+      exposes: {
+        // Expose modules to host
+        './App': './src/App',
+        './Button': './src/components/Button',
+        './utils': './src/utils',
+      },
+      shared: {
+        // Match host's shared deps
+        react: { singleton: true },
+        'react-dom': { singleton: true },
+      },
+    }),
+  ],
+};
+```
+
+## Shared Dependencies
+
+### Singleton Pattern
+```javascript
+shared: {
+  react: { 
+    singleton: true,
+    requiredVersion: '^18.0.0',
+    // If version mismatch:
+    // - eager: true (load immediately)
+    // - fallback to own version
+  },
+  'react-dom': { singleton: true },
+}
+
+// Only one React instance loaded
+// Prevents "multiple React versions" errors
+```
+
+### Version Management
+```javascript
+shared: {
+  lodash: {
+    singleton: false,  // Multiple versions OK
+    requiredVersion: '^4.17.0',
+  },
+  '@company/ui': {
+    singleton: true,
+    requiredVersion: '^1.0.0',
+    // strictVersion: true (enforce exact match)
+  }
+}
+```
+
+## Advanced Patterns
+
+### Dynamic Remotes
+```javascript
+// Load remote at runtime
+async function loadRemote(remoteName, remoteUrl) {
+  await __webpack_init_sharing__('default');
+  
+  const container = window[remoteName];
+  await container.init(__webpack_share_scopes__.default);
+  
+  const factory = await container.get('./App');
+  return factory();
+}
+
+// Usage
+const RemoteComponent = React.lazy(() => 
+  loadRemote('app1', 'https://app1.example.com/remoteEntry.js')
+);
+```
+
+### Bi-Directional Sharing
+```javascript
+// Both apps can be host and remote
+// App A exposes components, consumes from App B
+// App B exposes components, consumes from App A
+
+// Circular dependencies possible but beware complexity
+```
+
+### Plugin Architecture
+```javascript
+// Host loads plugins dynamically
+const plugins = await fetch('/api/plugins');
+
+for (const plugin of plugins) {
+  const PluginComponent = React.lazy(() => 
+    import(/* webpackIgnore: true */ plugin.url)
+  );
+  render(<PluginComponent />);
+}
+```
+
+## Framework-Specific
+
+### Next.js
+```javascript
+// next.config.js
+const NextFederationPlugin = require('@module-federation/nextjs-mf');
+
+module.exports = {
+  webpack(config, options) {
+    config.plugins.push(
+      new NextFederationPlugin({
+        name: 'host',
+        filename: 'static/chunks/remoteEntry.js',
+        remotes: {
+          shop: 'shop@https://shop.example.com/_next/static/chunks/remoteEntry.js',
+        },
+        shared: {},
+      })
+    );
+    return config;
+  },
+};
+```
+
+### TypeScript
+```typescript
+// types/remotes.d.ts
+declare module 'app1/App' {
+  const App: React.ComponentType;
+  export default App;
+}
+
+declare module 'app1/Button' {
+  interface ButtonProps {
+    children: React.ReactNode;
+    onClick?: () => void;
+  }
+  const Button: React.FC<ButtonProps>;
+  export default Button;
+}
+```
+
+## Deployment Strategy
+
+### Independent Deployments
+```yaml
+# Each app deploys separately
+app1:
+  deploy: production
+  url: https://app1.example.com/remoteEntry.js
+  
+app2:
+  deploy: production  
+  url: https://app2.example.com/remoteEntry.js
+
+host:
+  deploy: production
+  remotes:
+    app1: https://app1.example.com/remoteEntry.js
+    app2: https://app2.example.com/remoteEntry.js
+```
+
+### Version Management
+```javascript
+// Remote exposes version
+new ModuleFederationPlugin({
+  name: 'app1',
+  exposes: {
+    './version': './package.json',
+  }
+});
+
+// Host checks compatibility
+const { version } = await import('app1/version');
+if (!satisfies(version, '^1.0.0')) {
+  console.warn('Incompatible version');
+}
+```
+
+## Common Issues
+
+### Chunk Loading
+```javascript
+// Ensure publicPath is set
+output: {
+  publicPath: 'auto', // Or specific URL
+}
+
+// For dynamic remotes
+__webpack_public_path__ = document.currentScript.src + '/../';
+```
+
+### React Context
+```javascript
+// Context must be shared
+shared: {
+  react: { singleton: true, eager: true },
+}
+
+// Or use external context provider
+// Wrap remote with context from host
+```
+
+### Routing
+```javascript
+// Use memory router in remotes
+// Sync with host router via events
+import { MemoryRouter } from 'react-router-dom';
+
+function RemoteApp() {
+  return (
+    <MemoryRouter initialEntries={[window.location.pathname]}>
+      <Routes>...</Routes>
+    </MemoryRouter>
+  );
+}
+```
+
+## Best Practices
+
+### 1. Define Clear Contracts
+```javascript
+// Expose minimal, stable API
+exposes: {
+  './App': './src/App',        // Component
+  './routes': './src/routes',  // Route config
+  './store': './src/store',    // State management
+}
+```
+
+### 2. Error Boundaries
+```javascript
+// Wrap remotes in error boundaries
+class RemoteErrorBoundary extends React.Component {
+  state = { hasError: false };
+  
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  
+  render() {
+    if (this.state.hasError) {
+      return <div>Failed to load remote</div>;
+    }
+    return this.props.children;
+  }
+}
+```
+
+### 3. Loading States
+```javascript
+<Suspense fallback={<Skeleton />}>
+  <ErrorBoundary>
+    <RemoteApp />
+  </ErrorBoundary>
+</Suspense>
+```
+
+<KeyTakeaway>
+Module Federation enables runtime code sharing between independent builds. Use it for micro-frontends, plugin systems, or gradual migrations. Manage shared dependencies carefully to avoid version conflicts, and implement error boundaries for resilience. It's powerful but adds complexity—use only when independent deployment is required.
+</KeyTakeaway>

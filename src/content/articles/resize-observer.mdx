@@ -1,19 +1,345 @@
 ---
 title: "Resize Observer"
 slug: "resize-observer"
-subtitle: "Deep dive into resize observer"
+subtitle: "React to element size changes"
 category: "browser-apis"
 icon: "maximize"
-description: "Understanding resize observer and its applications in modern web development"
+description: "Monitor element resizes with the Resize Observer API for responsive components without polling"
 difficulty: "intermediate"
-tags: ["browser","api","responsive"]
-related: []
-resources: []
-status: "stub"
+tags: ["browser","api","responsive","performance"]
+related: ["intersection-observer","mutation-observer"]
+resources:
+  - title: "MDN - ResizeObserver"
+    url: "https://developer.mozilla.org/en-US/docs/Web/API/ResizeObserver"
+  - title: "Web.dev - ResizeObserver"
+    url: "https://web.dev/resize-observer/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Resize Observer is a concept in frontend engineering. This article is currently being written.
+ResizeObserver reports changes to the dimensions of an Element's content or border box, or the bounding box of an SVGElement. It provides a performant way to respond to element size changes without polling or expensive getBoundingClientRect() calls.
 </DefinitionBlock>
 
-<StubNotice />
+## Basic Usage
+
+### Creating an Observer
+```javascript
+const observer = new ResizeObserver((entries) => {
+  for (const entry of entries) {
+    console.log('Element resized:', entry.target);
+    console.log('New size:', entry.contentRect);
+    
+    const { width, height, top, left, bottom, right } = entry.contentRect;
+    
+    // Respond to size change
+    handleResize(entry.target, width, height);
+  }
+});
+
+// Observe elements
+const elements = document.querySelectorAll('.resizable');
+elements.forEach(el => observer.observe(el));
+
+// Stop observing
+// observer.unobserve(element);
+// observer.disconnect();
+```
+
+### ResizeObserverEntry
+```javascript
+{
+  target: Element,           // The resized element
+  contentRect: DOMRectReadOnly, {
+    width: number,
+    height: number,
+    x: number,  // left
+    y: number,  // top
+    top: number,
+    right: number,
+    bottom: number,
+    left: number
+  },
+  borderBoxSize: [{ inlineSize, blockSize }],
+  contentBoxSize: [{ inlineSize, blockSize }],
+  devicePixelContentBoxSize: [{ inlineSize, blockSize }]
+}
+```
+
+## Practical Use Cases
+
+### Responsive Canvas
+```javascript
+const canvas = document.querySelector('canvas');
+const ctx = canvas.getContext('2d');
+
+const resizeObserver = new ResizeObserver((entries) => {
+  for (const entry of entries) {
+    const { width, height } = entry.contentRect;
+    
+    // Set canvas size to match container
+    canvas.width = width * window.devicePixelRatio;
+    canvas.height = height * window.devicePixelRatio;
+    
+    // Scale context for high DPI displays
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    
+    // Redraw content
+    drawScene(width, height);
+  }
+});
+
+resizeObserver.observe(canvas.parentElement);
+```
+
+### Text Fit
+```javascript
+function fitText(element) {
+  const resizeObserver = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      const { width } = entry.contentRect;
+      const textLength = element.textContent.length;
+      
+      // Calculate optimal font size
+      const fontSize = Math.min(width / (textLength * 0.6), 48);
+      element.style.fontSize = `${fontSize}px`;
+    }
+  });
+  
+  resizeObserver.observe(element);
+  return () => resizeObserver.disconnect();
+}
+
+// Usage
+fitText(document.querySelector('.hero-title'));
+```
+
+### Responsive Grid Layout
+```javascript
+const grid = document.querySelector('.responsive-grid');
+
+const resizeObserver = new ResizeObserver((entries) => {
+  for (const entry of entries) {
+    const width = entry.contentRect.width;
+    
+    // Adjust columns based on container width
+    if (width < 600) {
+      grid.style.gridTemplateColumns = '1fr';
+    } else if (width < 900) {
+      grid.style.gridTemplateColumns = 'repeat(2, 1fr)';
+    } else {
+      grid.style.gridTemplateColumns = 'repeat(3, 1fr)';
+    }
+  }
+});
+
+resizeObserver.observe(grid);
+```
+
+## Box Options
+
+### Content Box vs Border Box
+```javascript
+// Observe content box (default)
+observer.observe(element);
+// or
+observer.observe(element, { box: 'content-box' });
+
+// Observe border box (includes padding and border)
+observer.observe(element, { box: 'border-box' });
+
+// Observe device pixel content box
+observer.observe(element, { box: 'device-pixel-content-box' });
+```
+
+### Handling Different Boxes
+```javascript
+const observer = new ResizeObserver((entries) => {
+  for (const entry of entries) {
+    // Content box size
+    const contentWidth = entry.contentRect.width;
+    const contentHeight = entry.contentRect.height;
+    
+    // Border box size (newer API)
+    if (entry.borderBoxSize) {
+      const borderWidth = entry.borderBoxSize[0].inlineSize;
+      const borderHeight = entry.borderBoxSize[0].blockSize;
+    }
+  }
+});
+```
+
+## Advanced Patterns
+
+### Debounced Resize Handler
+```javascript
+function createDebouncedResizeObserver(callback, delay = 100) {
+  let timeoutId;
+  
+  return new ResizeObserver((entries) => {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      callback(entries);
+    }, delay);
+  });
+}
+
+// Usage
+const observer = createDebouncedResizeObserver((entries) => {
+  // Runs at most every 100ms
+  expensiveLayoutCalculation(entries);
+}, 100);
+```
+
+### Breakpoint-Based Classes
+```javascript
+function responsiveClassManager(element, breakpoints) {
+  const observer = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      const width = entry.contentRect.width;
+      
+      // Remove all breakpoint classes
+      breakpoints.forEach(bp => {
+        element.classList.remove(bp.class);
+      });
+      
+      // Add appropriate class
+      const activeBreakpoint = breakpoints
+        .slice()
+        .reverse()
+        .find(bp => width >= bp.minWidth);
+      
+      if (activeBreakpoint) {
+        element.classList.add(activeBreakpoint.class);
+      }
+    }
+  });
+  
+  observer.observe(element);
+  return () => observer.disconnect();
+}
+
+// Usage
+responsiveClassManager(container, [
+  { minWidth: 0, class: 'size-xs' },
+  { minWidth: 576, class: 'size-sm' },
+  { minWidth: 768, class: 'size-md' },
+  { minWidth: 992, class: 'size-lg' },
+  { minWidth: 1200, class: 'size-xl' }
+]);
+```
+
+### Component Library Pattern
+```javascript
+class ResizableComponent extends HTMLElement {
+  constructor() {
+    super();
+    this.resizeObserver = null;
+  }
+  
+  connectedCallback() {
+    this.resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        this.handleResize(entry.contentRect);
+      }
+    });
+    
+    this.resizeObserver.observe(this);
+  }
+  
+  disconnectedCallback() {
+    this.resizeObserver?.disconnect();
+  }
+  
+  handleResize({ width, height }) {
+    // Override in subclasses
+  }
+}
+```
+
+## Performance Best Practices
+
+### Batch Processing
+```javascript
+const observer = new ResizeObserver((entries) => {
+  // Process all entries in single frame
+  requestAnimationFrame(() => {
+    entries.forEach(entry => {
+      updateElement(entry.target, entry.contentRect);
+    });
+  });
+});
+```
+
+### Avoid Layout Thrashing
+```javascript
+// Bad: Reading and writing interleaved
+const observer = new ResizeObserver((entries) => {
+  entries.forEach(entry => {
+    const height = entry.target.clientHeight; // Read
+    entry.target.style.height = height + 10 + 'px'; // Write
+    const newHeight = entry.target.clientHeight; // Read again!
+  });
+});
+
+// Good: Batch reads and writes
+const observer = new ResizeObserver((entries) => {
+  // Collect measurements
+  const measurements = entries.map(entry => ({
+    target: entry.target,
+    width: entry.contentRect.width
+  }));
+  
+  // Apply all changes in next frame
+  requestAnimationFrame(() => {
+    measurements.forEach(({ target, width }) => {
+      target.style.fontSize = width / 20 + 'px';
+    });
+  });
+});
+```
+
+## Comparison with Other Methods
+
+```javascript
+// Old way: Window resize event (coarse)
+window.addEventListener('resize', () => {
+  // Fires for any window resize, not element-specific
+  const rect = element.getBoundingClientRect();
+  handleResize(rect.width, rect.height);
+});
+
+// Old way: Polling (inefficient)
+setInterval(() => {
+  const rect = element.getBoundingClientRect();
+  if (rect.width !== lastWidth) {
+    handleResize(rect.width, rect.height);
+  }
+}, 100);
+
+// New way: ResizeObserver (precise and efficient)
+const observer = new ResizeObserver((entries) => {
+  for (const entry of entries) {
+    handleResize(entry.contentRect.width, entry.contentRect.height);
+  }
+});
+observer.observe(element);
+```
+
+## Browser Support
+
+```javascript
+// Feature detection
+if ('ResizeObserver' in window) {
+  // Use ResizeObserver
+} else {
+  // Fallback to ResizeObserver polyfill
+  // or window resize + getBoundingClientRect
+}
+
+// Polyfill
+import { ResizeObserver } from '@juggle/resize-observer';
+```
+
+<KeyTakeaway>
+ResizeObserver is the modern solution for responding to element size changes. It replaces polling and window resize workarounds with an efficient, element-specific API. Use it for responsive canvas, text fitting, and container query-like behaviors. Always disconnect observers when components unmount.
+</KeyTakeaway>

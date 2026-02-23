@@ -1,19 +1,264 @@
 ---
 title: "Intersection Observer"
 slug: "intersection-observer"
-subtitle: "Deep dive into intersection observer"
+subtitle: "Detect when elements enter or leave the viewport"
 category: "browser-apis"
 icon: "eye"
-description: "Understanding intersection observer and its applications in modern web development"
+description: "Efficiently detect when elements become visible or hidden in the viewport for lazy loading and animations"
 difficulty: "intermediate"
-tags: ["browser","api","performance"]
-related: []
-resources: []
-status: "stub"
+tags: ["browser","api","performance","lazy-loading"]
+related: ["mutation-observer","resize-observer","lazy-loading"]
+resources:
+  - title: "MDN - Intersection Observer API"
+    url: "https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API"
+  - title: "Google Developers - Lazy Loading"
+    url: "https://developers.google.com/web/fundamentals/performance/lazy-loading-guidance/images-and-video"
+status: "published"
 ---
 
 <DefinitionBlock>
-Intersection Observer is a concept in frontend engineering. This article is currently being written.
+The Intersection Observer API provides a way to asynchronously observe changes in the intersection of a target element with an ancestor element or with a top-level document's viewport. It's the modern, performant replacement for scroll event listeners.
 </DefinitionBlock>
 
-<StubNotice />
+## Basic Usage
+
+### Creating an Observer
+```javascript
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      console.log('Element is visible:', entry.target);
+      // Trigger action
+    }
+  });
+}, {
+  root: null,        // viewport
+  rootMargin: '0px',
+  threshold: 0.5     // 50% visibility
+});
+
+// Start observing
+const target = document.querySelector('#target');
+observer.observe(target);
+```
+
+### IntersectionEntry Properties
+```javascript
+{
+  target: Element,           // The observed element
+  isIntersecting: Boolean,   // Currently intersecting?
+  intersectionRatio: Number, // 0 to 1 (visibility percentage)
+  intersectionRect: DOMRect, // Visible area rectangle
+  boundingClientRect: DOMRect, // Target's bounds
+  rootBounds: DOMRect,       // Root's bounds
+  time: DOMHighResTimeStamp  // When intersection changed
+}
+```
+
+## Common Use Cases
+
+### Lazy Loading Images
+```javascript
+const imageObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const img = entry.target;
+      img.src = img.dataset.src;
+      img.classList.remove('lazy');
+      imageObserver.unobserve(img);
+    }
+  });
+}, { rootMargin: '50px' }); // Start loading 50px before visible
+
+document.querySelectorAll('img.lazy').forEach(img => {
+  imageObserver.observe(img);
+});
+```
+
+### Infinite Scroll
+```javascript
+const sentinel = document.querySelector('#scroll-sentinel');
+
+const scrollObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting && !isLoading) {
+      loadMoreContent();
+    }
+  });
+}, { rootMargin: '200px' });
+
+scrollObserver.observe(sentinel);
+```
+
+### Animate on Scroll
+```javascript
+const animationObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('animate-in');
+      // Optional: unobserve after animation
+      // animationObserver.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.2 });
+
+document.querySelectorAll('.animate-on-scroll').forEach(el => {
+  animationObserver.observe(el);
+});
+```
+
+## Configuration Options
+
+### Threshold Values
+```javascript
+// Single threshold - trigger at 50% visibility
+{ threshold: 0.5 }
+
+// Multiple thresholds - trigger at multiple points
+{ threshold: [0, 0.25, 0.5, 0.75, 1] }
+
+// Zero threshold - trigger as soon as 1px is visible
+{ threshold: 0 }
+```
+
+### Root Margin
+```javascript
+// Expand the root by 100px on all sides
+{ rootMargin: '100px' }
+
+// Top right bottom left (like CSS margin)
+{ rootMargin: '100px 50px 75px 25px' }
+
+// Negative margin - shrink the root
+{ rootMargin: '-100px' }
+
+// Combined with threshold
+{ 
+  rootMargin: '50px',
+  threshold: 0.5 
+}
+```
+
+### Custom Root
+```javascript
+// Observe within a scrollable container
+const container = document.querySelector('.scroll-container');
+
+const observer = new IntersectionObserver(callback, {
+  root: container,
+  threshold: 0.5
+});
+```
+
+## Advanced Patterns
+
+### Sticky Header Detection
+```javascript
+const header = document.querySelector('header');
+const sentinel = document.createElement('div');
+sentinel.style.position = 'absolute';
+sentinel.style.top = '0';
+sentinel.style.height = '1px';
+document.body.prepend(sentinel);
+
+const observer = new IntersectionObserver((entries) => {
+  const isSticky = !entries[0].isIntersecting;
+  header.classList.toggle('is-sticky', isSticky);
+});
+
+observer.observe(sentinel);
+```
+
+### Section Spy (Active Navigation)
+```javascript
+const sections = document.querySelectorAll('section');
+const navLinks = document.querySelectorAll('.nav-link');
+
+const sectionObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      const id = entry.target.id;
+      navLinks.forEach(link => {
+        link.classList.toggle('active', 
+          link.getAttribute('href') === `#${id}`
+        );
+      });
+    }
+  });
+}, { threshold: 0.5 });
+
+sections.forEach(section => sectionObserver.observe(section));
+```
+
+### Video Autoplay/Pause
+```javascript
+const videoObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    const video = entry.target;
+    
+    if (entry.isIntersecting && entry.intersectionRatio >= 0.5) {
+      video.play();
+    } else {
+      video.pause();
+    }
+  });
+}, { threshold: 0.5 });
+
+document.querySelectorAll('video').forEach(video => {
+  videoObserver.observe(video);
+});
+```
+
+## Performance Considerations
+
+### Batch Processing
+```javascript
+// Observe multiple elements efficiently
+const observer = new IntersectionObserver((entries) => {
+  // All entries fire in the same callback
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      loadElement(entry.target);
+      observer.unobserve(entry.target);
+    }
+  });
+});
+
+// Observe all at once
+document.querySelectorAll('.lazy').forEach(el => {
+  observer.observe(el);
+});
+```
+
+### Cleanup
+```javascript
+// Stop observing specific element
+observer.unobserve(target);
+
+// Stop observing all elements
+observer.disconnect();
+
+// In React/Vue components
+useEffect(() => {
+  const observer = new IntersectionObserver(callback);
+  observer.observe(ref.current);
+  
+  return () => observer.disconnect(); // Cleanup
+}, []);
+```
+
+## Browser Support
+
+```javascript
+// Feature detection
+if ('IntersectionObserver' in window) {
+  // Use Intersection Observer
+} else {
+  // Fallback to scroll events or polyfill
+  import('intersection-observer');
+}
+```
+
+<KeyTakeaway>
+Intersection Observer replaces scroll event listeners for visibility detection, providing better performance and simpler code. Use it for lazy loading, infinite scroll, scroll animations, and tracking element visibility. Always clean up observers when components unmount to prevent memory leaks.
+</KeyTakeaway>

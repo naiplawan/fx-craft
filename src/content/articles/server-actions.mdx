@@ -1,19 +1,338 @@
 ---
 title: "Server Actions"
 slug: "server-actions"
-subtitle: "Deep dive into server actions"
+subtitle: "Mutate data directly from components"
 category: "react-internals"
 icon: "send"
-description: "Understanding server actions and its applications in modern web development"
+description: "Next.js Server Actions allow components to call server-side functions seamlessly without API routes"
 difficulty: "intermediate"
-tags: ["react","server","forms"]
-related: []
-resources: []
-status: "stub"
+tags: ["react","server","forms","nextjs"]
+related: ["server-components","form","ssr"]
+resources:
+  - title: "Next.js Server Actions"
+    url: "https://nextjs.org/docs/app/building-your-application/data-fetching/server-actions"
+  - title: "React Server Actions RFC"
+    url: "https://react.dev/reference/react/use-server"
+status: "published"
 ---
 
 <DefinitionBlock>
-Server Actions is a concept in frontend engineering. This article is currently being written.
+Server Actions are functions that run on the server but can be called directly from React components. They eliminate the need to create separate API routes for mutations, allowing forms and buttons to call server-side code seamlessly while handling progressive enhancement and error states automatically.
 </DefinitionBlock>
 
-<StubNotice />
+## Basic Usage
+
+### Creating a Server Action
+```typescript
+// app/actions.ts
+'use server';
+
+import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
+
+export async function createPost(formData: FormData) {
+  'use server';
+  
+  const title = formData.get('title');
+  const content = formData.get('content');
+  
+  // Server-side validation
+  if (!title || typeof title !== 'string') {
+    return { error: 'Title is required' };
+  }
+  
+  // Database operation
+  await db.posts.create({
+    data: { title, content }
+  });
+  
+  // Revalidate and redirect
+  revalidatePath('/posts');
+  redirect('/posts');
+}
+```
+
+### Using in Components
+```typescript
+// app/posts/new/page.tsx
+import { createPost } from '../actions';
+
+export default function NewPostPage() {
+  return (
+    <form action={createPost}>
+      <input 
+        name="title" 
+        placeholder="Post title"
+        required 
+      />
+      
+      <textarea 
+        name="content" 
+        placeholder="Write your post..."
+      />
+      
+      <button type="submit">Create Post</button>
+    </form>
+  );
+}
+```
+
+## Progressive Enhancement
+
+### Works Without JavaScript
+```html
+<!-- Server renders form with action URL -->
+<form action="/server-action" method="POST">
+  <input name="title" />
+  <button type="submit">Submit</button>
+</form>
+
+<!-- With JS: Intercept submit, call action -->
+<!-- Without JS: Traditional form submission -->
+```
+
+### JavaScript-Enhanced Experience
+```typescript
+'use client';
+
+import { useState } from 'react';
+import { createPost } from './actions';
+
+export default function PostForm() {
+  const [isPending, setIsPending] = useState(false);
+  const [error, setError] = useState('');
+  
+  async function handleSubmit(formData: FormData) {
+    setIsPending(true);
+    setError('');
+    
+    const result = await createPost(formData);
+    
+    if (result?.error) {
+      setError(result.error);
+    }
+    
+    setIsPending(false);
+  }
+  
+  return (
+    <form action={handleSubmit}>
+      {error && <div className="error">{error}</div>}
+      
+      <input name="title" disabled={isPending} />
+      
+      <button type="submit" disabled={isPending}>
+        {isPending ? 'Creating...' : 'Create'}
+      </button>
+    </form>
+  );
+}
+```
+
+## Advanced Patterns
+
+### Bound Actions
+```typescript
+// Bind arguments to actions
+async function updatePost(postId: string, formData: FormData) {
+  'use server';
+  
+  await db.posts.update({
+    where: { id: postId },
+    data: { title: formData.get('title') }
+  });
+  
+  revalidatePath(`/posts/${postId}`);
+}
+
+// Component usage
+export default function EditPost({ post }) {
+  const updatePostWithId = updatePost.bind(null, post.id);
+  
+  return (
+    <form action={updatePostWithId}>
+      <input 
+        name="title" 
+        defaultValue={post.title} 
+      />
+      <button type="submit">Update</button>
+    </form>
+  );
+}
+```
+
+### useFormStatus Hook
+```typescript
+'use client';
+
+import { useFormStatus } from 'react-dom';
+
+function SubmitButton() {
+  const { pending } = useFormStatus();
+  
+  return (
+    <button type="submit" disabled={pending}>
+      {pending ? 'Submitting...' : 'Submit'}
+    </button>
+  );
+}
+
+// Usage
+export default function Form() {
+  return (
+    <form action={createPost}>
+      <input name="title" />
+      <SubmitButton />
+    </form>
+  );
+}
+```
+
+### Optimistic Updates
+```typescript
+'use client';
+
+import { useOptimistic } from 'react';
+import { sendMessage } from './actions';
+
+export default function Chat({ messages }) {
+  const [optimisticMessages, addOptimisticMessage] = useOptimistic(
+    messages,
+    (state, newMessage) => [...state, { ...newMessage, sending: true }]
+  );
+  
+  async function handleSubmit(formData) {
+    const message = formData.get('message');
+    
+    addOptimisticMessage({ text: message });
+    await sendMessage(message);
+  }
+  
+  return (
+    <div>
+      {optimisticMessages.map((msg, i) => (
+        <div key={i} style={{ opacity: msg.sending ? 0.5 : 1 }}>
+          {msg.text}
+        </div>
+      ))}
+      
+      <form action={handleSubmit}>
+        <input name="message" />
+        <button>Send</button>
+      </form>
+    </div>
+  );
+}
+```
+
+## Error Handling
+
+### tryErrorBoundary
+```typescript
+'use client';
+
+import { useEffect } from 'react';
+
+export default function ErrorFallback({ error, reset }) {
+  useEffect(() => {
+    // Log error
+    console.error(error);
+  }, [error]);
+  
+  return (
+    <div>
+      <h2>Something went wrong!</h2>
+      <button onClick={reset}>Try again</button>
+    </div>
+  );
+}
+
+// page.tsx
+import { ErrorBoundary } from 'react-error-boundary';
+
+export default function Page() {
+  return (
+    <ErrorBoundary FallbackComponent={ErrorFallback}>
+      <PostForm />
+    </ErrorBoundary>
+  );
+}
+```
+
+## Best Practices
+
+### 1. Validate on Server
+```typescript
+'use server';
+
+import { z } from 'zod';
+
+const schema = z.object({
+  title: z.string().min(1).max(100),
+  content: z.string().min(10)
+});
+
+export async function createPost(formData: FormData) {
+  'use server';
+  
+  const data = Object.fromEntries(formData);
+  const parsed = schema.safeParse(data);
+  
+  if (!parsed.success) {
+    return { 
+      error: 'Validation failed',
+      issues: parsed.error.issues 
+    };
+  }
+  
+  // ... create post
+}
+```
+
+### 2. Revalidate After Mutations
+```typescript
+'use server';
+
+import { revalidatePath, revalidateTag } from 'next/cache';
+
+export async function updateUser(userId, formData) {
+  'use server';
+  
+  await db.users.update({ where: { id: userId }, data: formData });
+  
+  // Revalidate specific path
+  revalidatePath('/profile');
+  
+  // Or revalidate by tag
+  revalidateTag(`user-${userId}`);
+}
+```
+
+### 3. Security
+```typescript
+'use server';
+
+import { auth } from '@/lib/auth';
+
+export async function deletePost(postId: string) {
+  'use server';
+  
+  // Always check authentication
+  const session = await auth();
+  if (!session) {
+    throw new Error('Unauthorized');
+  }
+  
+  // Check authorization
+  const post = await db.posts.findUnique({ where: { id: postId } });
+  if (post.authorId !== session.userId) {
+    throw new Error('Forbidden');
+  }
+  
+  await db.posts.delete({ where: { id: postId } });
+}
+```
+
+<KeyTakeaway>
+Server Actions simplify data mutations by eliminating API routes and enabling direct server calls from components. They support progressive enhancement (work without JS), provide built-in pending states, and integrate seamlessly with React's form handling. Always validate on server, handle errors gracefully, and revalidate cached data after mutations.
+</KeyTakeaway>

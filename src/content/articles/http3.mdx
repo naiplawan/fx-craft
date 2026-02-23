@@ -1,19 +1,283 @@
 ---
 title: "HTTP/3"
 slug: "http3"
-subtitle: "Deep dive into http/3"
+subtitle: "Next generation protocol over QUIC"
 category: "networking"
 icon: "zap-off"
-description: "Understanding http/3 and its applications in modern web development"
+description: "HTTP/3 uses QUIC to solve head-of-line blocking and improve connection establishment"
 difficulty: "advanced"
-tags: ["http","protocol","quic"]
-related: []
-resources: []
-status: "stub"
+tags: ["http","protocol","quic","performance"]
+related: ["http2","web-workers"]
+resources:
+  - title: "Cloudflare - HTTP/3"
+    url: "https://www.cloudflare.com/learning/performance/what-is-http3/"
+  - title: "QUIC RFC"
+    url: "https://tools.ietf.org/html/rfc9000"
+status: "published"
 ---
 
 <DefinitionBlock>
-HTTP/3 is a concept in frontend engineering. This article is currently being written.
+HTTP/3 is the third major version of HTTP that runs over QUIC instead of TCP. QUIC is a new transport protocol built on UDP that eliminates head-of-line blocking, reduces connection establishment time, and provides better performance on unreliable networks.
 </DefinitionBlock>
 
-<StubNotice />
+## Why HTTP/3?
+
+### TCP Head-of-Line Blocking in HTTP/2
+```
+HTTP/2 over TCP:
+
+Stream 1: Pkt1 Pkt2 Pkt3        Pkt5
+Stream 2: Pkt1 Pkt2 Pkt3 Pkt4
+Stream 3: Pkt1 Pkt2 Pkt3 Pkt4 Pkt5
+                     ↑
+                Pkt4 lost!
+
+All streams wait for Pkt4 retransmission
+This is TCP head-of-line blocking
+```
+
+### QUIC to the Rescue
+```
+HTTP/3 over QUIC:
+
+Stream 1: Pkt1 Pkt2 Pkt3        Pkt5
+Stream 2: Pkt1 Pkt2 Pkt3 Pkt4
+Stream 3: Pkt1 Pkt2 Pkt3 Pkt4 Pkt5
+                     ↑
+                Pkt4 lost on Stream 2
+
+Only Stream 2 waits for retransmission
+Other streams continue independently
+```
+
+## QUIC Advantages
+
+### 1. Faster Connection Establishment
+```
+HTTP/2 + TLS 1.2:            HTTP/3 (QUIC):
+                              
+TCP Handshake                QUIC Handshake
+Client ───SYN──> Server     Client ───Initial──> Server
+Client <──SYN-ACK─ Server    Client <──Handshake── Server
+Client ───ACK──> Server     (Done! TLS 1.3 included)
+                              
+TLS Handshake                0-RTT or 1-RTT
+ClientHello                  vs 2-RTT for TCP+TLS
+ServerHello
+Key Exchange
+
+Total: 2-3 RTT               Total: 0-1 RTT
+```
+
+### 2. Connection Migration
+```javascript
+// TCP connection tied to IP + Port
+// Change network? Connection lost.
+
+// QUIC uses Connection ID
+// Can migrate between WiFi <-> 4G seamlessly
+
+// User walks out of coffee shop
+// Connection continues on mobile data
+// No reconnection needed
+```
+
+### 3. Better Loss Recovery
+```javascript
+// TCP: Conservative, slows down after loss
+// QUIC: Faster recovery, independent streams
+
+// On mobile networks with packet loss
+// HTTP/3 maintains better throughput
+```
+
+## HTTP/3 Stack
+
+```
+Application Layer:
+HTTP/3 (semantically identical to HTTP/2)
+
+Transport Layer:
+QUIC (replaces TCP + TLS)
+  - Multiplexed streams
+  - Built-in TLS 1.3
+  - Congestion control
+  - Error correction
+
+Network Layer:
+UDP (instead of TCP)
+
+Why UDP?
+- QUIC is built in userspace
+- Faster iteration (no OS kernel updates)
+- Works with existing network infrastructure
+```
+
+## Protocol Features
+
+### Connection ID
+```javascript
+// TCP: 4-tuple (src IP, src port, dst IP, dst port)
+// Change any = new connection
+
+// QUIC: Connection ID (64-bit or variable)
+// Stays same across network changes
+
+// Connection can survive:
+// - IP address change
+// - Port change
+// - Network interface change
+```
+
+### 0-RTT Resumption
+```javascript
+// First connection: 1-RTT
+Client ───Initial+0-RTT──> Server
+Client <──Handshake── Server
+
+// Subsequent connections: 0-RTT
+Client ───0-RTT Data──> Server
+// Send data immediately using cached credentials
+
+// Use case: Mobile apps reconnecting
+```
+
+## Browser Support
+
+```javascript
+// Chrome: Supported since v87 (2020)
+// Firefox: Supported since v88
+// Safari: Supported since v14
+// Edge: Supported (Chromium-based)
+
+// Check support:
+if ('WebTransport' in window) {
+  // HTTP/3 APIs available
+}
+
+// Most users now have HTTP/3 support
+// ~95% browser market share
+```
+
+## Server Implementation
+
+### Cloudflare
+```bash
+# Enable in dashboard
+# Or via API
+curl -X PATCH "https://api.cloudflare.com/client/v4/zones/{zone_id}/settings/http3" \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  --data '{"value":"on"}'
+```
+
+### Nginx (with patch or nginx-quic)
+```nginx
+server {
+  listen 443 quic reuseport;
+  listen 443 ssl;
+  
+  ssl_certificate     /path/to/cert.crt;
+  ssl_certificate_key /path/to/cert.key;
+  
+  # Alt-Svc header tells client HTTP/3 is available
+  add_header Alt-Svc 'h3=":443"; ma=86400';
+}
+```
+
+### Node.js (experimental)
+```javascript
+// Node.js 20+ has experimental QUIC
+import { createSocket } from 'node:dgram';
+import quic from 'node-quic';
+
+// Note: Still experimental, use with caution
+```
+
+## Debugging HTTP/3
+
+### Browser
+```javascript
+// Chrome DevTools:
+// Network tab > Protocol column
+// Look for "h3" or "h3-29" etc.
+
+// Check response headers
+// Alt-Svc: h3=":443"; ma=86400
+```
+
+### Command Line
+```bash
+# Using curl with HTTP/3 support
+curl --http3 -I https://cloudflare.com
+
+# Using quiche-client
+git clone https://github.com/cloudflare/quiche
+cargo run --bin quiche-client -- https://cloudflare.com
+
+# Check if site supports HTTP/3
+curl -sI https://example.com | grep -i alt-svc
+```
+
+## When to Use HTTP/3
+
+### Best Use Cases
+```javascript
+// 1. Mobile applications
+// Frequent network switches
+// High packet loss environments
+
+// 2. Real-time applications
+// Gaming
+// Video streaming
+// Live updates
+
+// 3. Users with unstable connections
+// Mobile networks
+// Satellite internet
+// Developing regions
+```
+
+### When HTTP/2 is Fine
+```javascript
+// Stable, high-bandwidth connections
+// Data center to data center
+// Wired connections with low latency
+```
+
+## Performance Impact
+
+```javascript
+// Typical improvements:
+// - 10-20% faster on mobile networks
+// - 5-10% faster on desktop
+// - Much better on lossy networks (30%+)
+
+// Connection establishment:
+// - 50% faster for first connection
+// - Near-instant for resumed connections
+```
+
+## Migration Considerations
+
+```javascript
+// 1. UDP must be allowed
+// Some corporate firewalls block UDP
+// Fallback to HTTP/2 needed
+
+// 2. Infrastructure changes
+// Load balancers need QUIC support
+// Different connection handling
+
+// 3. Debugging tools
+// tcpdump doesn't work (UDP)
+// Need QUIC-aware tools
+
+// 4. CDN support
+// Most CDNs now support HTTP/3
+// Easy win with Cloudflare, Fastly, etc.
+```
+
+<KeyTakeaway>
+HTTP/3 over QUIC eliminates TCP head-of-line blocking, enables faster connections with 0-RTT resumption, and supports seamless connection migration. It's especially beneficial for mobile users and unstable networks. Enable it via your CDN for automatic performance gains.
+</KeyTakeaway>

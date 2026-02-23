@@ -1,19 +1,279 @@
 ---
 title: "Layout Thrashing"
 slug: "layout-thrashing"
-subtitle: "Deep dive into layout thrashing"
+subtitle: "Avoid forced synchronous layout"
 category: "performance"
 icon: "layout"
-description: "Understanding layout thrashing and its applications in modern web development"
+description: "Prevent expensive forced reflows by batching DOM reads and writes"
 difficulty: "advanced"
-tags: ["performance","reflow","browser"]
-related: []
-resources: []
-status: "stub"
+tags: ["performance","reflow","dom","optimization"]
+related: ["critical-rendering-path","web-workers"]
+resources:
+  - title: "Google - Avoid Large Layout Shifts"
+    url: "https://web.dev/optimize-lcp/"
+  - title: "Web.dev - Avoid Forced Synchronous Layouts"
+    url: "https://web.dev/avoid-large-complex-layouts-and-layout-thrashing/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Layout Thrashing is a concept in frontend engineering. This article is currently being written.
+Layout thrashing (also called forced synchronous layout) occurs when JavaScript alternates between reading and writing DOM properties, forcing the browser to recalculate layout repeatedly. This significantly degrades performance, especially on complex pages.
 </DefinitionBlock>
 
-<StubNotice />
+## The Problem
+
+### What Causes Layout Thrashing
+```javascript
+// ❌ Bad: Reading and writing interleaved
+const elements = document.querySelectorAll('.item');
+
+// Browser must recalculate layout after each write
+for (let i = 0; i < elements.length; i++) {
+  const height = elements[i].offsetHeight;  // Read (forces layout)
+  elements[i].style.height = height + 10 + 'px';  // Write (invalidates layout)
+  // Next iteration: layout must be recalculated!
+}
+// 1000 elements = 1000 layout calculations
+```
+
+### Why It's Expensive
+```
+Browser rendering pipeline:
+
+1. JavaScript
+   ↓
+2. Style (CSS matching)
+   ↓
+3. Layout (calculate geometry) ← EXPENSIVE
+   ↓
+4. Paint (draw pixels)
+   ↓
+5. Composite (layer together)
+
+Layout thrashing forces step 3 to repeat
+```
+
+## Reading vs Writing
+
+### Properties That Force Layout
+```javascript
+// Reading these forces layout recalculation:
+element.offsetWidth
+element.offsetHeight
+element.offsetTop
+element.offsetLeft
+
+element.clientWidth
+element.clientHeight
+
+element.scrollWidth
+element.scrollHeight
+element.scrollTop
+element.scrollLeft
+
+element.getBoundingClientRect()
+element.getComputedStyle()
+
+window.getComputedStyle(element)
+document.documentElement.scrollTop
+```
+
+### Writing Invalidates Layout
+```javascript
+// These invalidate layout:
+element.style.width = '100px';
+element.style.height = '100px';
+element.style.margin = '10px';
+element.style.padding = '20px';
+element.style.border = '1px solid';
+element.style.fontSize = '16px';
+element.style.display = 'flex';
+element.style.position = 'absolute';
+
+// Adding/removing classes that change layout
+element.classList.add('expanded');
+element.classList.remove('collapsed');
+```
+
+## Solutions
+
+### 1. Batch Reads, Then Writes
+```javascript
+// ✅ Good: Separate reads and writes
+const elements = document.querySelectorAll('.item');
+
+// Phase 1: Read all values
+const heights = [];
+for (let i = 0; i < elements.length; i++) {
+  heights.push(elements[i].offsetHeight);  // Read
+}
+
+// Phase 2: Write all changes
+for (let i = 0; i < elements.length; i++) {
+  elements[i].style.height = heights[i] + 10 + 'px';  // Write
+}
+// Only 1 layout calculation!
+```
+
+### 2. Use FastDOM
+```javascript
+// FastDOM batches reads and writes automatically
+import fastdom from 'fastdom';
+
+fastdom.measure(() => {
+  // All reads
+  const height = element.offsetHeight;
+  const width = element.offsetWidth;
+  
+  fastdom.mutate(() => {
+    // All writes
+    element.style.height = height * 2 + 'px';
+    element.style.width = width * 2 + 'px';
+  });
+});
+```
+
+### 3. Use CSS Transforms
+```javascript
+// ❌ Bad: Changes trigger layout
+function animateBad() {
+  element.style.left = x + 'px';
+  element.style.top = y + 'px';
+  element.style.width = w + 'px';
+  element.style.height = h + 'px';
+}
+
+// ✅ Good: Transform doesn't trigger layout
+function animateGood() {
+  element.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+}
+
+// Transform is compositor-only (GPU accelerated)
+```
+
+### 4. requestAnimationFrame
+```javascript
+// Defer writes to next frame
+function updateLayout() {
+  // Read values
+  const rect = element.getBoundingClientRect();
+  
+  requestAnimationFrame(() => {
+    // Write in next frame
+    element.style.height = rect.height + 10 + 'px';
+  });
+}
+```
+
+## Real-World Examples
+
+### Animated List
+```javascript
+// ❌ Bad: Thrashing during animation
+function animateListBad(items) {
+  items.forEach((item, index) => {
+    const height = item.offsetHeight;  // Read
+    item.style.transform = `translateY(${index * height}px)`;  // Write
+  });
+}
+
+// ✅ Good: Cache measurements
+function animateListGood(items) {
+  // First pass: read all heights
+  const heights = items.map(item => item.offsetHeight);
+  
+  // Second pass: apply transforms
+  let offset = 0;
+  items.forEach((item, index) => {
+    item.style.transform = `translateY(${offset}px)`;
+    offset += heights[index];
+  });
+}
+```
+
+### Window Resize
+```javascript
+// ❌ Bad: Handler thrashes on every resize event
+window.addEventListener('resize', () => {
+  const width = window.innerWidth;
+  
+  elements.forEach(el => {
+    el.style.width = width / 3 + 'px';  // Write causes layout
+    const height = el.offsetHeight;      // Read forces reflow
+    el.style.height = height * 2 + 'px';  // Another write!
+  });
+});
+
+// ✅ Good: Debounce and batch
+const debouncedResize = debounce(() => {
+  const width = window.innerWidth;
+  
+  // Batch all reads first
+  const heights = elements.map(el => el.offsetHeight);
+  
+  // Then batch all writes
+  elements.forEach((el, i) => {
+    el.style.width = width / 3 + 'px';
+    el.style.height = heights[i] * 2 + 'px';
+  });
+}, 100);
+
+window.addEventListener('resize', debouncedResize);
+```
+
+## Detection
+
+### Chrome DevTools
+```
+1. Performance tab
+2. Record while reproducing issue
+3. Look for "Layout" or "Recalculate Style" events
+4. Long bars = expensive operations
+
+Warning in console:
+"Forced synchronous layout is a possible performance bottleneck"
+```
+
+### Performance Marks
+```javascript
+// Measure layout time
+performance.mark('layout-start');
+
+// ... your code ...
+
+performance.mark('layout-end');
+performance.measure('layout', 'layout-start', 'layout-end');
+
+// Check in DevTools > Performance > Timings
+```
+
+## Best Practices
+
+```javascript
+// 1. Cache measurements
+const width = element.offsetWidth;
+// Use 'width' multiple times instead of reading repeatedly
+
+// 2. Avoid layout in loops
+// Move reads/writes outside loops when possible
+
+// 3. Use CSS containment
+.container {
+  contain: layout; /* Isolates layout changes */
+}
+
+// 4. Prefer compositor-only properties
+// opacity, transform (not width, height, top, left)
+
+// 5. Use ResizeObserver for efficient size monitoring
+const observer = new ResizeObserver(entries => {
+  for (const entry of entries) {
+    console.log(entry.contentRect);
+  }
+});
+observer.observe(element);
+```
+
+<KeyTakeaway>
+Layout thrashing kills performance. Always batch DOM reads together, then batch writes together. Never interleave reading layout properties with writing style properties. Use transforms instead of position/size changes when possible, and leverage tools like FastDOM for complex applications.
+</KeyTakeaway>

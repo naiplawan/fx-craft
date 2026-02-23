@@ -1,19 +1,252 @@
 ---
 title: "HTTPS/TLS"
 slug: "https"
-subtitle: "Deep dive into https/tls"
+subtitle: "Secure communication over the internet"
 category: "security"
 icon: "lock"
-description: "Understanding https/tls and its applications in modern web development"
+description: "Understand HTTPS, TLS certificates, and secure connection establishment"
 difficulty: "intermediate"
-tags: ["security","tls","encryption"]
-related: []
-resources: []
-status: "stub"
+tags: ["security","tls","encryption","https"]
+related: ["csp","xss","jwt"]
+resources:
+  - title: "Let's Encrypt"
+    url: "https://letsencrypt.org/"
+  - title: "SSL Labs Test"
+    url: "https://www.ssllabs.com/ssltest/"
+status: "published"
 ---
 
 <DefinitionBlock>
-HTTPS/TLS is a concept in frontend engineering. This article is currently being written.
+HTTPS (HTTP Secure) is the secure version of HTTP that uses TLS (Transport Layer Security) to encrypt communication between browser and server. It ensures data confidentiality, integrity, and authenticates the server's identity.
 </DefinitionBlock>
 
-<StubNotice />
+## TLS Handshake
+
+```
+1. Client Hello
+   - Supported TLS versions
+   - Cipher suites
+   - Random bytes
+
+2. Server Hello
+   - Chosen TLS version
+   - Chosen cipher suite
+   - Server certificate
+   - Random bytes
+
+3. Client verifies certificate
+   - Checks CA signature
+   - Validates hostname
+   - Checks expiration
+
+4. Key exchange
+   - Client generates pre-master secret
+   - Encrypts with server's public key
+   - Both derive session keys
+
+5. Encrypted communication begins
+```
+
+## Security Benefits
+
+### 1. Encryption
+```javascript
+// Without HTTPS (HTTP)
+GET /api/users
+Host: example.com
+
+// Anyone on the network can read this
+```
+
+```javascript
+// With HTTPS
+GET /api/users
+Host: example.com
+
+// Encrypted - only client and server can decrypt
+// TLS 1.3 uses AES-256-GCM or ChaCha20-Poly1305
+```
+
+### 2. Integrity
+```javascript
+// HTTPS prevents man-in-the-middle attacks
+// Any modification to data is detected
+```
+
+### 3. Authentication
+```javascript
+// Certificate verifies server identity
+// Prevents phishing sites
+```
+
+## Enforcing HTTPS
+
+### HTTP Strict Transport Security (HSTS)
+```javascript
+// Server response header
+Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+
+// Browser will:
+// 1. Always use HTTPS for this domain
+// 2. Include subdomains
+// 3. Submit to preload list (irreversible)
+```
+
+### Redirect HTTP to HTTPS
+```javascript
+// Nginx
+server {
+  listen 80;
+  server_name example.com;
+  return 301 https://$server_name$request_uri;
+}
+```
+
+```javascript
+// Express middleware
+function requireHTTPS(req, res, next) {
+  if (req.headers['x-forwarded-proto'] !== 'https') {
+    return res.redirect(301, 'https://' + req.get('host') + req.url);
+  }
+  next();
+}
+```
+
+## Security Headers
+
+### Content Security Policy
+```javascript
+// Restrict resources to HTTPS only
+Content-Security-Policy: default-src https:; upgrade-insecure-requests;
+
+// Block mixed content
+Content-Security-Policy: block-all-mixed-content;
+```
+
+### Secure Cookies
+```javascript
+// Server sets cookie
+Set-Cookie: session=abc123; Secure; HttpOnly; SameSite=Strict
+
+// Secure: Only sent over HTTPS
+// HttpOnly: Not accessible to JavaScript
+// SameSite: CSRF protection
+```
+
+## Mixed Content
+
+```javascript
+// HTTPS page loading HTTP resources = Mixed Content
+// Blocked by browsers
+
+// Bad
+<img src="http://example.com/image.jpg">
+
+// Good
+<img src="https://example.com/image.jpg">
+
+// Or use protocol-relative URL (not recommended)
+<img src="//example.com/image.jpg">
+```
+
+## Certificate Types
+
+### Domain Validation (DV)
+```javascript
+// Validates domain ownership
+// Free with Let's Encrypt
+// Suitable for most sites
+```
+
+### Organization Validation (OV)
+```javascript
+// Validates organization identity
+// Shows company name in certificate
+// More trust indicators
+```
+
+### Extended Validation (EV)
+```javascript
+// Rigorous organization verification
+// Green bar in browser (deprecated in modern browsers)
+// Highest trust level
+```
+
+## Certificate Management
+
+### Let's Encrypt (Free)
+```bash
+# Install Certbot
+sudo apt-get install certbot
+
+# Obtain certificate
+sudo certbot certonly --standalone -d example.com
+
+# Auto-renewal (cron job)
+0 12 * * * /usr/bin/certbot renew --quiet
+```
+
+### Wildcard Certificates
+```bash
+# Covers all subdomains
+*.example.com
+
+# DNS validation required
+```
+
+## Testing HTTPS
+
+### Online Tools
+```javascript
+// SSL Labs Test
+https://www.ssllabs.com/ssltest/
+
+// Security Headers
+https://securityheaders.com/
+
+// Certificate Transparency
+https://crt.sh/
+```
+
+### Browser DevTools
+```javascript
+// Check certificate in browser
+// Chrome: Security tab in DevTools
+// Firefox: Lock icon → Connection secure
+
+// Verify TLS version
+// Chrome DevTools → Security panel
+```
+
+## Best Practices
+
+### 1. Use TLS 1.2 or higher
+```javascript
+// Disable old protocols
+// TLS 1.0 and 1.1 are deprecated
+
+// Nginx configuration
+ssl_protocols TLSv1.2 TLSv1.3;
+```
+
+### 2. Strong Cipher Suites
+```javascript
+// Prefer forward secrecy
+// ECDHE key exchange
+// AES-256-GCM or ChaCha20
+
+// Nginx
+ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256';
+ssl_prefer_server_ciphers on;
+```
+
+### 3. Certificate Pinning (Advanced)
+```javascript
+// Hardcode expected certificate/public key
+// Protects against rogue CAs
+// Complex to maintain
+```
+
+<KeyTakeaway>
+HTTPS is essential for modern web security. It provides encryption, integrity, and authentication. Use HSTS to enforce HTTPS, set secure cookie flags, avoid mixed content, and keep TLS configurations up to date. Free certificates from Let's Encrypt make HTTPS accessible to everyone.
+</KeyTakeaway>

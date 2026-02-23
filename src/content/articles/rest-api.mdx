@@ -1,19 +1,302 @@
 ---
 title: "REST API Design"
 slug: "rest-api"
-subtitle: "Deep dive into rest api design"
+subtitle: "Design scalable and maintainable APIs"
 category: "networking"
 icon: "server"
-description: "Understanding rest api design and its applications in modern web development"
+description: "Master RESTful API design principles, HTTP methods, status codes, and best practices"
 difficulty: "intermediate"
-tags: ["api","rest","http"]
-related: []
-resources: []
-status: "stub"
+tags: ["api","rest","http","architecture"]
+related: ["graphql","https","web-workers"]
+resources:
+  - title: "REST API Tutorial"
+    url: "https://restfulapi.net/"
+  - title: "MDN - HTTP"
+    url: "https://developer.mozilla.org/en-US/docs/Web/HTTP"
+status: "published"
 ---
 
 <DefinitionBlock>
-REST API Design is a concept in frontend engineering. This article is currently being written.
+REST (Representational State Transfer) is an architectural style for designing networked applications. REST APIs use HTTP methods to perform CRUD operations on resources, providing a simple and scalable way to build web services.
 </DefinitionBlock>
 
-<StubNotice />
+## HTTP Methods
+
+```javascript
+// GET - Read resources
+GET /users           // List all users
+GET /users/123       // Get specific user
+GET /users/123/posts // Get user's posts
+
+// POST - Create resource
+POST /users
+{
+  "name": "John Doe",
+  "email": "john@example.com"
+}
+
+// PUT - Full update
+PUT /users/123
+{
+  "name": "John Doe",
+  "email": "john.doe@example.com",
+  "age": 30
+}
+
+// PATCH - Partial update
+PATCH /users/123
+{
+  "email": "newemail@example.com"
+}
+
+// DELETE - Remove resource
+DELETE /users/123
+```
+
+## Status Codes
+
+```javascript
+// 2xx Success
+200 OK              // Standard response
+201 Created         // Resource created
+204 No Content      // Success, no body
+
+// 3xx Redirection
+301 Moved Permanently
+304 Not Modified    // Use cached version
+
+// 4xx Client Errors
+400 Bad Request     // Invalid request
+401 Unauthorized    // Authentication required
+403 Forbidden       // No permission
+404 Not Found       // Resource doesn't exist
+422 Unprocessable   // Validation failed
+
+// 5xx Server Errors
+500 Internal Error
+502 Bad Gateway
+503 Service Unavailable
+```
+
+## URL Design
+
+### Resource Naming
+```javascript
+// Good: Nouns, plural
+GET /users
+GET /users/123/posts
+GET /users/123/posts/456/comments
+
+// Bad: Verbs, singular
+GET /getUsers
+GET /user/123
+```
+
+### Filtering, Sorting, Pagination
+```javascript
+// Filtering
+GET /users?role=admin&status=active
+
+// Sorting
+GET /users?sort=-created_at,name
+// -created_at = descending, name = ascending
+
+// Pagination
+GET /users?page=2&limit=25
+GET /users?cursor=eyJpZCI6MTAwfQ==
+
+// Search
+GET /users?q=john&fields=name,email
+```
+
+## Request/Response Format
+
+### Headers
+```javascript
+// Request
+Content-Type: application/json
+Accept: application/json
+Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
+If-None-Match: "abc123" // For caching
+
+// Response
+Content-Type: application/json
+ETag: "abc123"          // Cache identifier
+Cache-Control: max-age=3600
+X-RateLimit-Limit: 100
+X-RateLimit-Remaining: 99
+```
+
+### Response Structure
+```javascript
+// Success
+{
+  "data": {
+    "id": 123,
+    "name": "John Doe",
+    "email": "john@example.com"
+  },
+  "meta": {
+    "timestamp": "2024-01-15T10:30:00Z"
+  }
+}
+
+// Collection
+{
+  "data": [
+    { "id": 1, "name": "User 1" },
+    { "id": 2, "name": "User 2" }
+  ],
+  "meta": {
+    "pagination": {
+      "page": 1,
+      "limit": 10,
+      "total": 100,
+      "pages": 10
+    }
+  }
+}
+
+// Error
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Invalid input data",
+    "details": [
+      {
+        "field": "email",
+        "message": "Invalid email format"
+      }
+    ]
+  }
+}
+```
+
+## Client Implementation
+
+### Fetch API
+```javascript
+// GET with error handling
+async function getUser(id) {
+  const response = await fetch(`/api/users/${id}`, {
+    headers: {
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${token}`
+    }
+  });
+  
+  if (!response.ok) {
+    if (response.status === 404) {
+      throw new Error('User not found');
+    }
+    throw new Error('Failed to fetch user');
+  }
+  
+  return response.json();
+}
+
+// POST with body
+async function createUser(userData) {
+  const response = await fetch('/api/users', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(userData)
+  });
+  
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message);
+  }
+  
+  return response.json();
+}
+```
+
+### Axios
+```javascript
+import axios from 'axios';
+
+const api = axios.create({
+  baseURL: 'https://api.example.com',
+  headers: {
+    'Content-Type': 'application/json'
+  }
+});
+
+// Interceptors
+api.interceptors.request.use(config => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+api.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response?.status === 401) {
+      // Handle unauthorized
+      window.location = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Usage
+const { data } = await api.get('/users?page=1');
+const { data: user } = await api.post('/users', newUser);
+```
+
+## Best Practices
+
+### Versioning
+```javascript
+// URL versioning (recommended)
+/api/v1/users
+/api/v2/users
+
+// Header versioning
+Accept: application/vnd.api+json;version=2
+```
+
+### Caching
+```javascript
+// Server-side caching headers
+Cache-Control: public, max-age=3600
+ETag: "abc123"
+Last-Modified: Wed, 15 Jan 2024 10:30:00 GMT
+
+// Client-side conditional requests
+fetch('/api/users', {
+  headers: {
+    'If-None-Match': storedETag
+  }
+});
+```
+
+### Rate Limiting
+```javascript
+// Handle rate limits
+async function fetchWithRetry(url, options = {}, maxRetries = 3) {
+  for (let i = 0; i < maxRetries; i++) {
+    const response = await fetch(url, options);
+    
+    if (response.status === 429) {
+      const retryAfter = response.headers.get('Retry-After');
+      await delay(retryAfter * 1000);
+      continue;
+    }
+    
+    return response;
+  }
+  
+  throw new Error('Rate limit exceeded');
+}
+```
+
+<KeyTakeaway>
+REST APIs use HTTP methods semantically on resource URLs. Return appropriate status codes, implement pagination and filtering, version your API, and provide clear error messages. Use HTTP caching headers for performance and handle rate limits gracefully in clients.
+</KeyTakeaway>

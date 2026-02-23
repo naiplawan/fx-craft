@@ -1,19 +1,275 @@
 ---
 title: "OAuth 2.0"
 slug: "oauth"
-subtitle: "Deep dive into oauth 2.0"
+subtitle: "Secure delegated authorization"
 category: "security"
 icon: "key"
-description: "Understanding oauth 2.0 and its applications in modern web development"
+description: "Understand OAuth 2.0 flows for secure third-party authorization without sharing passwords"
 difficulty: "advanced"
-tags: ["security","auth","tokens"]
-related: []
-resources: []
-status: "stub"
+tags: ["security","auth","oauth","tokens"]
+related: ["jwt","https","xss"]
+resources:
+  - title: "OAuth 2.0 Specification"
+    url: "https://oauth.net/2/"
+  - title: "Auth0 - OAuth 2.0"
+    url: "https://auth0.com/docs/get-started/authentication-and-authorization-flow"
+status: "published"
 ---
 
 <DefinitionBlock>
-OAuth 2.0 is a concept in frontend engineering. This article is currently being written.
+OAuth 2.0 is an authorization framework that enables third-party applications to obtain limited access to user accounts on HTTP services. It allows users to grant access to their resources without sharing their passwords, using access tokens instead.
 </DefinitionBlock>
 
-<StubNotice />
+## Key Concepts
+
+### Roles
+```javascript
+// Resource Owner: The user who owns the data
+// Client: The application requesting access
+// Authorization Server: Issues access tokens
+// Resource Server: Hosts the protected resources
+```
+
+### Tokens
+```javascript
+// Access Token: Short-lived, grants access to resources
+// Refresh Token: Long-lived, obtains new access tokens
+// ID Token: Contains user identity information (OpenID Connect)
+```
+
+## Authorization Code Flow (Recommended)
+
+### Step-by-Step
+```javascript
+// 1. User clicks "Login with Google"
+const authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?' + 
+  new URLSearchParams({
+    client_id: 'your-client-id',
+    redirect_uri: 'https://yourapp.com/callback',
+    response_type: 'code',
+    scope: 'openid email profile',
+    state: 'random-state-value', // CSRF protection
+    code_challenge: 'hashed-pkce-verifier', // PKCE for security
+    code_challenge_method: 'S256'
+  });
+
+// Redirect user
+window.location.href = authUrl;
+
+// 2. User authenticates and authorizes
+// 3. Authorization server redirects back with code
+// https://yourapp.com/callback?code=abc123&state=random-state-value
+
+// 4. Exchange code for tokens (server-side)
+const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+  body: new URLSearchParams({
+    grant_type: 'authorization_code',
+    code: authorizationCode,
+    redirect_uri: 'https://yourapp.com/callback',
+    client_id: 'your-client-id',
+    client_secret: 'your-client-secret',
+    code_verifier: pkceVerifier // If using PKCE
+  })
+});
+
+const { access_token, refresh_token, id_token } = await tokenResponse.json();
+```
+
+### PKCE (Proof Key for Code Exchange)
+```javascript
+// Required for public clients (SPAs, mobile)
+// Prevents authorization code interception attacks
+
+// 1. Generate code verifier
+const codeVerifier = generateRandomString(128);
+
+// 2. Create code challenge
+const codeChallenge = base64URLEncode(
+  sha256(codeVerifier)
+);
+
+// 3. Send code_challenge in authorization request
+// 4. Send code_verifier in token request
+// Server verifies they match
+```
+
+## Client-Side Implementation
+
+### Implicit Flow (Deprecated)
+```javascript
+// ❌ Don't use implicit flow anymore
+// Access token in URL fragment
+// Security vulnerabilities
+```
+
+### Authorization Code with PKCE (SPAs)
+```javascript
+// Modern approach for SPAs
+import { createOAuthAppAuth } from '@octokit/auth-oauth-app';
+
+// Use libraries like:
+// - auth0-spa-js
+// - oidc-client-ts
+// - next-auth
+
+// Example with next-auth
+import { signIn } from 'next-auth/react';
+
+// Trigger OAuth flow
+await signIn('google', {
+  callbackUrl: '/dashboard'
+});
+
+// Library handles:
+// - PKCE generation
+// - State parameter
+// - Token exchange
+// - Session management
+```
+
+## Token Management
+
+### Storing Tokens
+```javascript
+// ❌ Don't store in localStorage (XSS vulnerable)
+localStorage.setItem('access_token', token);
+
+// ✅ Store in memory (lost on refresh)
+let accessToken = null;
+
+// ✅ Use httpOnly cookies (server-side)
+// Set-Cookie: access_token=xxx; HttpOnly; Secure; SameSite=Strict
+
+// ✅ Use secure storage for mobile
+// Keychain (iOS) / Keystore (Android)
+```
+
+### Refresh Token Rotation
+```javascript
+// Server-side: Exchange refresh token for new access token
+async function refreshAccessToken(refreshToken) {
+  const response = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'refresh_token',
+      refresh_token: refreshToken,
+      client_id: 'your-client-id',
+      client_secret: 'your-client-secret'
+    })
+  });
+  
+  const tokens = await response.json();
+  // Return new access_token and refresh_token
+  return tokens;
+}
+```
+
+## Security Best Practices
+
+### State Parameter (CSRF Protection)
+```javascript
+// Generate and store random state
+const state = generateRandomString(32);
+sessionStorage.setItem('oauth_state', state);
+
+// Include in authorization request
+const authUrl = `...&state=${state}`;
+
+// Verify in callback
+const returnedState = urlParams.get('state');
+const storedState = sessionStorage.getItem('oauth_state');
+
+if (returnedState !== storedState) {
+  throw new Error('CSRF attack detected');
+}
+```
+
+### Secure Redirect URIs
+```javascript
+// ✅ Exact match required
+redirect_uri: 'https://yourapp.com/auth/callback'
+
+// ❌ Don't use wildcards
+redirect_uri: 'https://*.yourapp.com/callback'
+
+// ❌ Don't use http
+redirect_uri: 'http://yourapp.com/callback'
+```
+
+### Scope Limiting
+```javascript
+// Request minimal scopes
+scope: 'openid email' // Read-only profile
+
+// ❌ Don't request excessive permissions
+scope: 'openid email https://mail.google.com/' // Can read all email!
+
+// Progressive authorization
+// Start with basic scopes
+// Request additional scopes when needed
+```
+
+## Common Flows
+
+### Client Credentials (Machine-to-Machine)
+```javascript
+// No user involved
+const response = await fetch('https://api.example.com/oauth/token', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'Authorization': 'Basic ' + btoa(clientId + ':' + clientSecret)
+  },
+  body: 'grant_type=client_credentials&scope=api'
+});
+```
+
+### Device Code (TVs, Consoles)
+```javascript
+// 1. Request device code
+const response = await fetch('https://oauth.example.com/device/code', {
+  method: 'POST',
+  body: JSON.stringify({ client_id, scope })
+});
+
+const { device_code, user_code, verification_uri } = await response.json();
+
+// 2. Display user_code to user
+console.log(`Go to ${verification_uri} and enter ${user_code}`);
+
+// 3. Poll for token
+while (true) {
+  await delay(5000);
+  const tokenResponse = await pollForToken(device_code);
+  if (tokenResponse.access_token) break;
+}
+```
+
+## Error Handling
+
+```javascript
+// Authorization errors
+if (urlParams.has('error')) {
+  const error = urlParams.get('error');
+  const description = urlParams.get('error_description');
+  
+  switch (error) {
+    case 'access_denied':
+      // User rejected authorization
+      break;
+    case 'invalid_scope':
+      // Requested scope is invalid
+      break;
+    case 'server_error':
+      // Authorization server error
+      break;
+  }
+}
+```
+
+<KeyTakeaway>
+OAuth 2.0 enables secure delegated authorization. Use Authorization Code flow with PKCE for SPAs, validate state parameter for CSRF protection, store tokens securely (prefer httpOnly cookies), and request minimal scopes. Never use implicit flow. Implement refresh token rotation for long-lived sessions.
+</KeyTakeaway>

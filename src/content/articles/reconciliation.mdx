@@ -1,19 +1,262 @@
 ---
 title: "Reconciliation"
 slug: "reconciliation"
-subtitle: "Deep dive into reconciliation"
+subtitle: "How React updates the DOM efficiently"
 category: "react-internals"
 icon: "refresh-cw"
-description: "Understanding reconciliation and its applications in modern web development"
+description: "Understanding React's diffing algorithm and how it efficiently updates the UI"
 difficulty: "advanced"
-tags: ["react","diffing","vdom"]
-related: []
-resources: []
-status: "stub"
+tags: ["react","diffing","vdom","performance"]
+related: ["react-hooks","fiber-architecture","suspense"]
+resources:
+  - title: "React Docs - Reconciliation"
+    url: "https://react.dev/learn/preserving-and-resetting-state"
+  - title: "React Fiber Architecture"
+    url: "https://github.com/acdlite/react-fiber-architecture"
+status: "published"
 ---
 
 <DefinitionBlock>
-Reconciliation is a concept in frontend engineering. This article is currently being written.
+Reconciliation is the algorithm React uses to diff one tree with another to determine which parts need to be updated. It enables React to update the DOM efficiently by computing the minimum set of changes needed.
 </DefinitionBlock>
 
-<StubNotice />
+## The Diffing Algorithm
+
+### Principles
+```javascript
+// 1. Different element types produce different trees
+// 2. Keys can hint at which child elements may be stable
+```
+
+### Element Type Comparison
+```javascript
+// React compares element types at the same position
+
+// Before
+<div>
+  <Counter />
+</div>
+
+// After - Different type, unmount Counter, mount span
+<span>
+  <Counter />
+</span>
+
+// Result: Counter state is lost, new instance created
+```
+
+### Props Comparison
+```javascript
+// Same element type, different props
+<div className="before" title="old" />
+
+// After
+<div className="after" title="new" />
+
+// React updates: className and title attributes only
+// No DOM element recreation
+```
+
+## Keys and Lists
+
+### Without Keys (Problem)
+```javascript
+// Initial state
+[
+  { id: 1, name: 'Alice' },
+  { id: 2, name: 'Bob' }
+]
+
+// After inserting at beginning
+[
+  { id: 3, name: 'Charlie' },  // New
+  { id: 1, name: 'Alice' },    // Was index 0
+  { id: 2, name: 'Bob' }       // Was index 1
+]
+
+// Without keys, React sees:
+// Index 0: Alice → Charlie (update)
+// Index 1: Bob → Alice (update)
+// Index 2: Nothing → Bob (create)
+// Result: Unnecessary updates, state loss
+```
+
+### With Keys (Solution)
+```javascript
+// Using unique IDs as keys
+{
+  items.map(item => (
+    <ListItem key={item.id} name={item.name} />
+  ))
+}
+
+// React sees:
+// Key 3: Not present → Create
+// Key 1: Same position → Keep
+// Key 2: Same position → Keep
+
+// Result: Minimal updates, state preserved
+```
+
+### Key Best Practices
+```javascript
+// Good: Stable, unique IDs
+items.map(item => (
+  <div key={item.id}>...</div>
+))
+
+// Bad: Array index (unstable)
+items.map((item, index) => (
+  <div key={index}>...</div>
+))
+
+// Bad: Random values
+items.map(item => (
+  <div key={Math.random()}>...</div>
+))
+```
+
+## State Preservation
+
+### Same Position, Same Type
+```javascript
+function Counter() {
+  const [count, setCount] = useState(0);
+  
+  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;
+}
+
+// Parent re-renders but Counter stays at same position
+function App() {
+  return (
+    <div>
+      <Header />
+      <Counter />  {/* State preserved */}
+    </div>
+  );
+}
+```
+
+### State Reset Patterns
+```javascript
+// Method 1: Different key forces remount
+<UserProfile key={userId} userId={userId} />
+
+// Method 2: Conditional rendering
+{showA ? <ComponentA /> : <ComponentB />}
+
+// Method 3: Different component types
+{
+  isAdmin ? <AdminDashboard /> : <UserDashboard />
+}
+```
+
+## Reconciliation Process
+
+```javascript
+// 1. Create virtual DOM tree (React elements)
+const element = <div className="container">Hello</div>;
+
+// 2. Compare with previous tree
+// - Element type same? Update props
+// - Element type different? Replace
+// - Array items? Check keys
+
+// 3. Generate list of DOM operations
+operations = [
+  { type: 'UPDATE_PROP', target: div, prop: 'className', value: 'container' },
+  { type: 'UPDATE_TEXT', target: textNode, value: 'Hello' }
+]
+
+// 4. Batch and apply operations
+// Uses requestIdleCallback for low priority
+// Commit phase applies to DOM
+```
+
+## Performance Implications
+
+### Expensive Re-renders
+```javascript
+// Bad: Inline object creates new reference every render
+<Child config={{ setting: 'value' }} />
+
+// Good: Stable reference
+const config = useMemo(() => ({ setting: 'value' }), []);
+<Child config={config} />
+```
+
+### Component Splitting
+```javascript
+// Before: Entire form re-renders
+function Form() {
+  const [values, setValues] = useState({});
+  
+  return (
+    <form>
+      <input value={values.a} onChange={...} />
+      <input value={values.b} onChange={...} />
+      <input value={values.c} onChange={...} />
+      {/* All inputs re-render on any change */}
+    </form>
+  );
+}
+
+// After: Isolated re-renders
+function Form() {
+  return (
+    <form>
+      <Field name="a" />
+      <Field name="b" />
+      <Field name="c" />
+    </form>
+  );
+}
+
+function Field({ name }) {
+  const [value, setValue] = useState('');
+  // Only this field re-renders
+  return <input value={value} onChange={...} />;
+}
+```
+
+## Debugging Re-renders
+
+### React DevTools Profiler
+```javascript
+// Record and analyze component renders
+// Shows why each component rendered
+// Identifies unnecessary re-renders
+```
+
+### Custom Hook
+```javascript
+function useWhyDidYouUpdate(name, props) {
+  const previousProps = useRef();
+  
+  useEffect(() => {
+    if (previousProps.current) {
+      const allKeys = Object.keys({ ...previousProps.current, ...props });
+      const changesObj = {};
+      
+      allKeys.forEach(key => {
+        if (previousProps.current[key] !== props[key]) {
+          changesObj[key] = {
+            from: previousProps.current[key],
+            to: props[key]
+          };
+        }
+      });
+      
+      if (Object.keys(changesObj).length) {
+        console.log('[why-did-you-update]', name, changesObj);
+      }
+    }
+    
+    previousProps.current = props;
+  });
+}
+```
+
+<KeyTakeaway>
+React's reconciliation algorithm efficiently updates the UI by comparing trees and applying minimal changes. Use stable keys for lists, understand when state is preserved or reset, and split components to minimize re-render scope. Profile your app to identify and optimize expensive renders.
+</KeyTakeaway>

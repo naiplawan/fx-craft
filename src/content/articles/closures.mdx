@@ -1,19 +1,379 @@
 ---
 title: "Closures"
 slug: "closures"
-subtitle: "Deep dive into closures"
+subtitle: "Functions that remember their lexical scope"
 category: "javascript-core"
 icon: "lock"
-description: "Understanding closures and its applications in modern web development"
+description: "Understanding closures - one of JavaScript's most powerful and often misunderstood features"
 difficulty: "intermediate"
-tags: ["javascript","scope","functions"]
-related: []
-resources: []
-status: "stub"
+tags: ["javascript","scope","functions","memory"]
+related: ["prototypes","promises","react-hooks"]
+resources:
+  - title: "MDN - Closures"
+    url: "https://developer.mozilla.org/en-US/docs/Web/JavaScript/Closures"
+  - title: "JavaScript.info - Closures"
+    url: "https://javascript.info/closure"
+status: "published"
 ---
 
 <DefinitionBlock>
-Closures is a concept in frontend engineering. This article is currently being written.
+A closure is the combination of a function bundled together (enclosed) with references to its surrounding state (the lexical environment). In JavaScript, closures give you access to an outer function's scope from an inner function, even after the outer function has returned.
 </DefinitionBlock>
 
-<StubNotice />
+## The Basics
+
+### Simple Closure Example
+```javascript
+function outer() {
+  let count = 0; // Variable in outer scope
+  
+  function inner() {
+    count++; // Inner function accesses outer variable
+    return count;
+  }
+  
+  return inner;
+}
+
+const counter = outer();
+console.log(counter()); // 1
+console.log(counter()); // 2
+console.log(counter()); // 3
+
+// count persists between calls but is not accessible directly
+```
+
+### What's Happening?
+1. `outer()` creates a local variable `count`
+2. `inner()` is defined inside `outer()`, capturing the lexical scope
+3. `outer()` returns `inner`, which still has access to `count`
+4. Each call to `counter()` accesses and modifies the same `count`
+
+## Data Privacy with Closures
+
+### Module Pattern
+```javascript
+const bankAccount = (function() {
+  let balance = 0; // Private variable
+  
+  return {
+    deposit(amount) {
+      if (amount > 0) {
+        balance += amount;
+        return balance;
+      }
+      throw new Error('Invalid deposit amount');
+    },
+    
+    withdraw(amount) {
+      if (amount > 0 && amount <= balance) {
+        balance -= amount;
+        return balance;
+      }
+      throw new Error('Insufficient funds');
+    },
+    
+    getBalance() {
+      return balance;
+    }
+  };
+})();
+
+bankAccount.deposit(100);
+console.log(bankAccount.getBalance()); // 100
+console.log(bankAccount.balance); // undefined - truly private
+```
+
+### Factory Functions
+```javascript
+function createUser(name) {
+  // Private variables
+  let _password = null;
+  let _loginAttempts = 0;
+  
+  return {
+    name,
+    
+    setPassword(password) {
+      if (password.length < 8) {
+        throw new Error('Password too short');
+      }
+      _password = password;
+    },
+    
+    login(password) {
+      _loginAttempts++;
+      if (password === _password) {
+        _loginAttempts = 0;
+        return { success: true, user: this.name };
+      }
+      
+      if (_loginAttempts >= 3) {
+        throw new Error('Account locked');
+      }
+      
+      return { success: false, attempts: _loginAttempts };
+    }
+  };
+}
+
+const user = createUser('John');
+user.setPassword('secret123');
+console.log(user.login('secret123')); // { success: true, user: 'John' }
+```
+
+## Practical Use Cases
+
+### Event Handlers with Data
+```javascript
+function setupButton(buttonId, message) {
+  const button = document.getElementById(buttonId);
+  
+  // Closure captures 'message'
+  button.addEventListener('click', function() {
+    console.log(message);
+  });
+}
+
+setupButton('btn1', 'Button 1 clicked!');
+setupButton('btn2', 'Button 2 clicked!');
+// Each handler remembers its own message
+```
+
+### Debounce Function
+```javascript
+function debounce(func, wait) {
+  let timeoutId; // Persistent across calls
+  
+  return function(...args) {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => {
+      func.apply(this, args);
+    }, wait);
+  };
+}
+
+const handleResize = debounce(() => {
+  console.log('Resized!');
+}, 250);
+
+window.addEventListener('resize', handleResize);
+```
+
+### Function Memoization
+```javascript
+function memoize(fn) {
+  const cache = new Map(); // Private cache
+  
+  return function(...args) {
+    const key = JSON.stringify(args);
+    
+    if (cache.has(key)) {
+      console.log('Cache hit:', key);
+      return cache.get(key);
+    }
+    
+    console.log('Cache miss:', key);
+    const result = fn.apply(this, args);
+    cache.set(key, result);
+    return result;
+  };
+}
+
+const fibonacci = memoize(function(n) {
+  if (n < 2) return n;
+  return fibonacci(n - 1) + fibonacci(n - 2);
+});
+
+console.log(fibonacci(40)); // Fast after first call
+```
+
+## Closures in Loops (Classic Pitfall)
+
+### The Problem
+```javascript
+// ❌ Wrong - All buttons alert "Button 5"
+for (var i = 0; i < 5; i++) {
+  setTimeout(() => {
+    console.log('Button', i);
+  }, 100);
+}
+// Output: "Button 5" (5 times)
+```
+
+### Solutions
+```javascript
+// Solution 1: Use let (block-scoped)
+for (let i = 0; i < 5; i++) {
+  setTimeout(() => {
+    console.log('Button', i);
+  }, 100);
+}
+// Output: "Button 0", "Button 1", etc.
+
+// Solution 2: IIFE (pre-ES6)
+for (var i = 0; i < 5; i++) {
+  (function(capturedI) {
+    setTimeout(() => {
+      console.log('Button', capturedI);
+    }, 100);
+  })(i);
+}
+
+// Solution 3: forEach (functional approach)
+[0, 1, 2, 3, 4].forEach(i => {
+  setTimeout(() => {
+    console.log('Button', i);
+  }, 100);
+});
+```
+
+## Advanced Patterns
+
+### Partial Application
+```javascript
+function partial(fn, ...presetArgs) {
+  return function(...laterArgs) {
+    return fn(...presetArgs, ...laterArgs);
+  };
+}
+
+const multiply = (a, b) => a * b;
+const double = partial(multiply, 2);
+const triple = partial(multiply, 3);
+
+console.log(double(5)); // 10
+console.log(triple(5)); // 15
+```
+
+### Curry Function
+```javascript
+function curry(fn) {
+  return function curried(...args) {
+    if (args.length >= fn.length) {
+      return fn.apply(this, args);
+    }
+    
+    return function(...nextArgs) {
+      return curried.apply(this, args.concat(nextArgs));
+    };
+  };
+}
+
+const sum = curry((a, b, c) => a + b + c);
+
+console.log(sum(1)(2)(3)); // 6
+console.log(sum(1, 2)(3)); // 6
+console.log(sum(1)(2, 3)); // 6
+```
+
+### Once Function
+```javascript
+function once(fn) {
+  let called = false;
+  let result;
+  
+  return function(...args) {
+    if (!called) {
+      called = true;
+      result = fn.apply(this, args);
+    }
+    return result;
+  };
+}
+
+const initialize = once(() => {
+  console.log('Initializing...');
+  return { status: 'ready' };
+});
+
+initialize(); // "Initializing..."
+initialize(); // No output, returns cached result
+initialize(); // No output, returns cached result
+```
+
+## Memory Considerations
+
+### Accidental Memory Leaks
+```javascript
+// ❌ Potential memory leak
+function processLargeData() {
+  const hugeArray = new Array(1000000).fill('data');
+  
+  return function() {
+    console.log('Processing...');
+    // hugeArray is kept in memory even if not used
+  };
+}
+
+// ✓ Clean closure
+function processLargeData() {
+  const hugeArray = new Array(1000000).fill('data');
+  
+  const result = process(hugeArray);
+  
+  return function() {
+    console.log(result); // Only keeps result, not hugeArray
+  };
+}
+```
+
+### Managing Closure Scope
+```javascript
+function createDataProcessor() {
+  let cache = new Map();
+  
+  return {
+    process(data) {
+      if (cache.has(data.id)) {
+        return cache.get(data.id);
+      }
+      const result = expensiveOperation(data);
+      cache.set(data.id, result);
+      return result;
+    },
+    
+    clearCache() {
+      cache.clear(); // Manual cleanup
+    }
+  };
+}
+```
+
+## Closures in Modern JavaScript
+
+### React Hooks
+```javascript
+function Counter() {
+  const [count, setCount] = useState(0);
+  
+  useEffect(() => {
+    // Closure captures 'count'
+    const timer = setInterval(() => {
+      console.log(count); // May be stale!
+    }, 1000);
+    
+    return () => clearInterval(timer);
+  }, [count]); // Dependency array
+  
+  return <button onClick={() => setCount(c => c + 1)}>{count}</button>;
+}
+```
+
+### ES6 Classes with Private Fields
+```javascript
+class Counter {
+  #count = 0; // True private field (no closure needed)
+  
+  increment() {
+    this.#count++;
+    return this.#count;
+  }
+}
+
+// Under the hood, this still uses closure-like mechanisms
+```
+
+<KeyTakeaway>
+Closures are fundamental to JavaScript, enabling data privacy, stateful functions, and powerful patterns like debouncing and memoization. Master them by understanding lexical scope, avoiding common loop pitfalls, and being mindful of memory implications. They're the foundation for modern patterns from React hooks to module systems.
+</KeyTakeaway>

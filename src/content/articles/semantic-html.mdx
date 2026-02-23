@@ -1,19 +1,278 @@
 ---
 title: "Semantic HTML"
 slug: "semantic-html"
-subtitle: "Deep dive into semantic html"
+subtitle: "Use meaningful markup for better accessibility"
 category: "accessibility"
 icon: "code"
-description: "Understanding semantic html and its applications in modern web development"
+description: "Learn semantic HTML elements that provide meaning and structure to web content for improved accessibility and SEO"
 difficulty: "beginner"
-tags: ["a11y","html","structure"]
-related: []
-resources: []
-status: "stub"
+tags: ["a11y","html","structure","seo"]
+related: ["aria","screen-readers","keyboard-navigation"]
+resources:
+  - title: "MDN - HTML Elements Reference"
+    url: "https://developer.mozilla.org/en-US/docs/Web/HTML/Element"
+  - title: "HTML5 Doctor"
+    url: "http://html5doctor.com/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Semantic HTML is a concept in frontend engineering. This article is currently being written.
+Semantic HTML uses markup that conveys meaning about the content it contains. Instead of generic divs and spans, semantic elements like header, nav, main, article, and footer describe the structure and purpose of content, making it accessible to screen readers and search engines.
 </DefinitionBlock>
 
-<StubNotice />
+## Why Semantic HTML Matters
+
+### Screen Reader Experience
+```html
+<!-- Bad: Screen reader just says "div" -->
+<div class="header">
+  <div class="nav">...</div>
+</div>
+
+<!-- Good: Screen reader announces landmarks -->
+<header>
+  <nav aria-label="Main">...</nav>
+</header>
+```
+
+### Keyboard Navigation
+```html
+<!-- Bad: Custom button not keyboard accessible -->
+<div class="button" onclick="submit()">Submit</div>
+
+<!-- Good: Native button with built-in accessibility -->
+<button type="submit">Submit</button>
+```
+
+## Common Semantic Elements
+
+### Document Structure
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Page Title</title>
+</head>
+<body>
+  <header>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/about">About</a>
+    </nav>
+  </header>
+  
+  <main>
+    <article>
+      <h1>Article Title</h1>
+      <p>Content...</p>
+    </article>
+    
+    <aside>
+      <p>Related content</p>
+    </aside>
+  </main>
+  
+  <footer>
+    <p>© 2024 Company</p>
+  </footer>
+</body>
+</html>
+```
+
+### Text Content
+```html
+<!-- Headings (h1-h6) -->
+<h1>Main Page Title</h1>
+<section>
+  <h2>Section Title</h2>
+  <article>
+    <h3>Article Title</h3>
+  </article>
+</section>
+
+<!-- Lists -->
+<ul>
+  <li>Unordered item</li>
+  <li>Another item</li>
+</ul>
+
+<ol>
+  <li>First step</li>
+  <li>Second step</li>
+</ol>
+
+<dl>
+  <dt>Term</dt>
+  <dd>Definition</dd>
+</dl>
+
+<!-- Quotes -->
+<blockquote cite="https://source.com">
+  <p>Long quotation here...</p>
+</blockquote>
+
+<p>She said <q>Short quote</q></p>
+
+<!-- Time -->
+<time datetime="2024-01-15">January 15, 2024</time>
+```
+
+### Forms
+```html
+<form action="/submit" method="POST">
+  <fieldset>
+    <legend>Personal Information</legend>
+    
+    <label for="name">Full Name</label>
+    <input 
+      type="text" 
+      id="name" 
+      name="name"
+      required
+      aria-describedby="name-help"
+    >
+    <span id="name-help">Enter your legal name</span>
+    
+    <label for="email">Email</label>
+    <input type="email" id="email" name="email" required>
+    
+    <button type="submit">Submit</button>
+  </fieldset>
+</form>
+```
+
+## HTML5 Sectioning Elements
+
+```html
+<article>
+  <!-- Self-contained content -->
+  <!-- Blog post, news article, product card -->
+</article>
+
+<section>
+  <!-- Thematic grouping of content -->
+  <!-- Chapter, tab panel, feature section -->
+</section>
+
+<aside>
+  <!-- Tangentially related content -->
+  <!-- Sidebar, callout, advertising -->
+</aside>
+
+<figure>
+  <img src="chart.png" alt="Sales chart showing growth">
+  <figcaption>Figure 1: Q4 Sales Growth</figcaption>
+</figure>
+
+<details>
+  <summary>Click to expand</summary>
+  <p>Hidden content revealed</p>
+</details>
+
+<dialog id="modal">
+  <form method="dialog">
+    <p>Modal content</p>
+    <button>Close</button>
+  </form>
+</dialog>
+```
+
+## Media Elements
+
+```html
+<!-- Images with alt text -->
+<img 
+  src="photo.jpg" 
+  alt="Golden retriever playing in park"
+  width="600" 
+  height="400"
+>
+
+<!-- Decorative images (empty alt) -->
+<img src="decoration.png" alt="">
+
+<!-- Audio -->
+<audio controls>
+  <source src="audio.mp3" type="audio/mpeg">
+  <source src="audio.ogg" type="audio/ogg">
+  <p>Your browser doesn't support audio</p>
+</audio>
+
+<!-- Video -->
+<video controls width="640" height="360">
+  <source src="video.mp4" type="video/mp4">
+  <track 
+    kind="captions" 
+    src="captions.vtt" 
+    srclang="en" 
+    label="English"
+  >
+  <p>Your browser doesn't support video</p>
+</video>
+
+<!-- Picture element for responsive images -->
+<picture>
+  <source media="(min-width: 800px)" srcset="large.jpg">
+  <source media="(min-width: 400px)" srcset="medium.jpg">
+  <img src="small.jpg" alt="Responsive image">
+</picture>
+```
+
+## Best Practices
+
+### Heading Hierarchy
+```html
+<!-- Good: Logical hierarchy -->
+<h1>Page Title</h1>
+  <h2>Section 1</h2>
+    <h3>Subsection</h3>
+  <h2>Section 2</h2>
+
+<!-- Bad: Skipped levels -->
+<h1>Page Title</h1>
+  <h3>Section (skipped h2)</h3>
+```
+
+### Links vs Buttons
+```html
+<!-- Use <a> for navigation -->
+<a href="/about">About Page</a>
+<a href="/contact">Contact</a>
+
+<!-- Use <button> for actions -->
+<button onclick="submitForm()">Submit</button>
+<button onclick="toggleMenu()">Toggle Menu</button>
+```
+
+### Tables for Data
+```html
+<!-- Good: Data table -->
+<table>
+  <caption>Monthly Sales</caption>
+  <thead>
+    <tr>
+      <th scope="col">Month</th>
+      <th scope="col">Sales</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th scope="row">January</th>
+      <td>$10,000</td>
+    </tr>
+  </tbody>
+</table>
+
+<!-- Bad: Using table for layout -->
+<table>
+  <tr>
+    <td>Header</td>
+    <td>Content</td>
+  </tr>
+</table>
+```
+
+<KeyTakeaway>
+Semantic HTML provides meaning to your content, improving accessibility for screen readers and search engine optimization. Use appropriate elements for their intended purpose, maintain logical heading hierarchies, provide meaningful alt text, and prefer native HTML elements over generic divs. Native elements come with built-in accessibility features that custom components must manually implement.
+</KeyTakeaway>

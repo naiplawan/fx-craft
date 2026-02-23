@@ -1,19 +1,212 @@
 ---
 title: "Lazy Loading"
 slug: "lazy-loading"
-subtitle: "Deep dive into lazy loading"
+subtitle: "Load resources only when needed"
 category: "performance"
 icon: "clock"
-description: "Understanding lazy loading and its applications in modern web development"
+description: "Improve initial page load by deferring non-critical resources until they're needed"
 difficulty: "beginner"
 tags: ["performance","images","code-splitting"]
-related: []
-resources: []
-status: "stub"
+related: ["intersection-observer","code-splitting","core-web-vitals"]
+resources:
+  - title: "web.dev - Lazy Loading"
+    url: "https://web.dev/browser-level-image-lazy-loading/"
+  - title: "MDN - Loading attribute"
+    url: "https://developer.mozilla.org/en-US/docs/Web/API/HTMLImageElement/loading"
+status: "published"
 ---
 
 <DefinitionBlock>
-Lazy Loading is a concept in frontend engineering. This article is currently being written.
+Lazy loading is a design pattern that delays the loading of non-critical resources at page load time. Instead, these resources are loaded when they're needed, such as when a user scrolls to them or interacts with a specific part of the page.
 </DefinitionBlock>
 
-<StubNotice />
+## Native Lazy Loading
+
+### Images
+```html
+<!-- Native lazy loading (modern browsers) -->
+<img src="image.jpg" loading="lazy" alt="Description" width="800" height="600">
+
+<!-- Eager loading for above-the-fold images -->
+<img src="hero.jpg" loading="eager" alt="Hero" width="1200" height="600">
+
+<!-- Lazy loading with responsive images -->
+<picture>
+  <source media="(min-width: 800px)" srcset="large.jpg">
+  <source media="(min-width: 400px)" srcset="medium.jpg">
+  <img src="small.jpg" loading="lazy" alt="Description" width="400" height="300">
+</picture>
+```
+
+### iframes
+```html
+<!-- Lazy load YouTube videos, maps, etc. -->
+<iframe 
+  src="https://www.youtube.com/embed/VIDEO_ID" 
+  loading="lazy"
+  width="560" 
+  height="315"
+  title="YouTube video"
+></iframe>
+```
+
+## JavaScript Implementation
+
+### Intersection Observer Pattern
+```javascript
+// Lazy load images with fallback
+if ('loading' in HTMLImageElement.prototype) {
+  // Browser supports native lazy loading
+  const images = document.querySelectorAll('img[data-src]');
+  images.forEach(img => {
+    img.src = img.dataset.src;
+    img.loading = 'lazy';
+  });
+} else {
+  // Use Intersection Observer
+  const imageObserver = new IntersectionObserver((entries, observer) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        const img = entry.target;
+        img.src = img.dataset.src;
+        img.removeAttribute('data-src');
+        observer.unobserve(img);
+      }
+    });
+  }, {
+    rootMargin: '50px 0px', // Start loading 50px before visible
+    threshold: 0.01
+  });
+  
+  document.querySelectorAll('img[data-src]').forEach(img => {
+    imageObserver.observe(img);
+  });
+}
+```
+
+### Lazy Loading Components
+```javascript
+// React lazy loading
+import { lazy, Suspense } from 'react';
+
+const HeavyComponent = lazy(() => import('./HeavyComponent'));
+
+function App() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <HeavyComponent />
+    </Suspense>
+  );
+}
+
+// Vue lazy loading
+const HeavyComponent = () => import('./HeavyComponent.vue');
+```
+
+## Advanced Patterns
+
+### Progressive Image Loading
+```javascript
+// Low-quality image placeholder (LQIP)
+function ProgressiveImage({ src, placeholder, alt }) {
+  const [imageSrc, setImageSrc] = useState(placeholder);
+  const [isLoaded, setIsLoaded] = useState(false);
+  
+  useEffect(() => {
+    const img = new Image();
+    img.src = src;
+    img.onload = () => {
+      setImageSrc(src);
+      setIsLoaded(true);
+    };
+  }, [src]);
+  
+  return (
+    <img
+      src={imageSrc}
+      alt={alt}
+      style={{
+        filter: isLoaded ? 'none' : 'blur(10px)',
+        transition: 'filter 0.3s'
+      }}
+    />
+  );
+}
+```
+
+### Lazy Load on Interaction
+```javascript
+// Load content on click/hover
+function LazyLoadOnInteraction() {
+  const [shouldLoad, setShouldLoad] = useState(false);
+  
+  return (
+    <div>
+      <button 
+        onMouseEnter={() => setShouldLoad(true)}
+        onClick={() => setShouldLoad(true)}
+      >
+        Show Content
+      </button>
+      
+      {shouldLoad && (
+        <Suspense fallback={<div>Loading...</div>}>
+          <LazyContent />
+        </Suspense>
+      )}
+    </div>
+  );
+}
+```
+
+## Best Practices
+
+### Always Include Dimensions
+```html
+<!-- Good: Prevents layout shift -->
+<img 
+  src="image.jpg" 
+  loading="lazy" 
+  width="800" 
+  height="600"
+  alt="Description"
+>
+
+<!-- Bad: Causes layout shift -->
+<img src="image.jpg" loading="lazy" alt="Description">
+```
+
+### Prioritize Critical Content
+```html
+<!-- Load above-the-fold images immediately -->
+<img src="hero.jpg" loading="eager" alt="Hero">
+
+<!-- Lazy load below-the-fold content -->
+<img src="gallery-1.jpg" loading="lazy" alt="Gallery 1">
+<img src="gallery-2.jpg" loading="lazy" alt="Gallery 2">
+```
+
+### Error Handling
+```javascript
+function LazyImage({ src, alt, ...props }) {
+  const [error, setError] = useState(false);
+  
+  if (error) {
+    return <div className="image-error">Failed to load image</div>;
+  }
+  
+  return (
+    <img
+      src={src}
+      alt={alt}
+      loading="lazy"
+      onError={() => setError(true)}
+      {...props}
+    />
+  );
+}
+```
+
+<KeyTakeaway>
+Lazy loading improves initial page load by deferring non-critical resources. Use native lazy loading with the loading attribute, implement Intersection Observer for broader browser support, and always include image dimensions to prevent layout shifts. Lazy load images, iframes, and code for optimal performance.
+</KeyTakeaway>

@@ -8,7 +8,7 @@ export default function PrinciplesPage() {
           Our Principles
         </h1>
         <p className="text-lg text-gray-600 dark:text-gray-400">
-          The philosophy behind FECraft and how we approach frontend engineering education.
+          The philosophy behind SalakCode and how we approach frontend engineering education.
         </p>
       </div>
 
@@ -93,7 +93,7 @@ export default function PrinciplesPage() {
           write an article or suggest improvements, please reach out.
         </p>
         <a
-          href="mailto:hello@fecraft.dev"
+          href="mailto:hello@salakcode.dev"
           className="inline-flex items-center gap-2 text-[#088395] dark:text-[#7AB2B2] font-medium hover:underline"
         >
           Get in touch

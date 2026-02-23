@@ -9,7 +9,7 @@ export default function InfoPage() {
           <Code2 className="w-8 h-8 text-[#088395] dark:text-[#7AB2B2]" />
         </div>
         <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-gray-100 mb-4">
-          About FECraft
+          About SalakCode
         </h1>
         <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
           A curated knowledge base for advanced frontend engineering concepts.
@@ -18,13 +18,13 @@ export default function InfoPage() {
 
       <div className="prose dark:prose-invert max-w-none">
         <p className="text-lg leading-relaxed">
-          FECraft is a comprehensive resource for frontend engineers who want to go beyond the basics. 
+          SalakCode is a comprehensive resource for frontend engineers who want to go beyond the basics. 
           We cover the deep technical concepts that power modern web applications—from React internals 
           and browser APIs to security, performance, and architecture patterns.
         </p>
 
         <h2 className="text-2xl font-semibold text-gray-900 dark:text-gray-100 mt-10 mb-4">
-          Why FECraft?
+          Why SalakCode?
         </h2>
 
         <p>
@@ -34,7 +34,7 @@ export default function InfoPage() {
         </p>
 
         <p>
-          We created FECraft to:
+          We created SalakCode to:
         </p>
 
         <ul className="space-y-2">
@@ -77,7 +77,7 @@ export default function InfoPage() {
         </h2>
 
         <p>
-          FECraft is built with modern web technologies:
+          SalakCode is built with modern web technologies:
         </p>
 
         <ul className="space-y-2">
@@ -101,7 +101,7 @@ export default function InfoPage() {
         
         <div className="flex flex-wrap gap-4">
           <Link
-            href="https://github.com/fecraft"
+            href="https://github.com/salakcode"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
           >
             <Github className="w-5 h-5" />
@@ -109,7 +109,7 @@ export default function InfoPage() {
           </Link>
           
           <Link
-            href="https://twitter.com/fecraft"
+            href="https://twitter.com/salakcode"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
           >
             <Twitter className="w-5 h-5" />
@@ -117,7 +117,7 @@ export default function InfoPage() {
           </Link>
           
           <Link
-            href="mailto:hello@fecraft.dev"
+            href="mailto:hello@salakcode.dev"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
           >
             <Mail className="w-5 h-5" />

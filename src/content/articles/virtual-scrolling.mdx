@@ -1,19 +1,332 @@
 ---
 title: "Virtual Scrolling"
 slug: "virtual-scrolling"
-subtitle: "Deep dive into virtual scrolling"
+subtitle: "Render only visible items in large lists"
 category: "performance"
 icon: "scroll"
-description: "Understanding virtual scrolling and its applications in modern web development"
+description: "Implement virtual scrolling to efficiently display large datasets by only rendering visible items"
 difficulty: "advanced"
-tags: ["performance","lists","dom"]
-related: []
-resources: []
-status: "stub"
+tags: ["performance","lists","dom","rendering"]
+related: ["intersection-observer","lazy-loading","react-hooks"]
+resources:
+  - title: "web.dev - Virtualize long lists"
+    url: "https://web.dev/articles/virtualize-long-lists"
+  - title: "React Window Documentation"
+    url: "https://react-window.vercel.app/"
+status: "published"
 ---
 
 <DefinitionBlock>
-Virtual Scrolling is a concept in frontend engineering. This article is currently being written.
+Virtual scrolling is a technique that renders only the items visible in the viewport, plus a small buffer above and below. This allows smooth scrolling through lists of any size (thousands or millions of items) while keeping DOM nodes and memory usage minimal.
 </DefinitionBlock>
 
-<StubNotice />
+## How It Works
+
+```
+Viewport: 500px height
+Item height: 50px
+Total items: 10,000
+
+Without virtualization:
+- DOM nodes: 10,000
+- Memory: Very high
+- Performance: Poor
+
+With virtualization:
+- Visible items: 10 (500px / 50px)
+- Buffer: 5 above + 5 below
+- DOM nodes: 20
+- Memory: Minimal
+- Performance: Smooth
+```
+
+## Basic Implementation
+
+### Vanilla JavaScript
+```javascript
+class VirtualScroller {
+  constructor(container, options) {
+    this.container = container;
+    this.itemHeight = options.itemHeight;
+    this.totalItems = options.totalItems;
+    this.renderItem = options.renderItem;
+    
+    this.visibleCount = Math.ceil(container.clientHeight / this.itemHeight);
+    this.buffer = 5;
+    
+    this.init();
+  }
+  
+  init() {
+    // Create scroll container
+    this.scrollContainer = document.createElement('div');
+    this.scrollContainer.style.height = 
+      `${this.totalItems * this.itemHeight}px`;
+    this.scrollContainer.style.position = 'relative';
+    
+    // Create visible items container
+    this.visibleContainer = document.createElement('div');
+    this.visibleContainer.style.position = 'absolute';
+    this.visibleContainer.style.top = '0';
+    this.visibleContainer.style.left = '0';
+    this.visibleContainer.style.right = '0';
+    
+    this.scrollContainer.appendChild(this.visibleContainer);
+    this.container.appendChild(this.scrollContainer);
+    
+    // Initial render
+    this.renderVisibleItems();
+    
+    // Listen to scroll
+    this.container.addEventListener('scroll', () => {
+      requestAnimationFrame(() => this.renderVisibleItems());
+    });
+  }
+  
+  renderVisibleItems() {
+    const scrollTop = this.container.scrollTop;
+    const startIndex = Math.floor(scrollTop / this.itemHeight);
+    const visibleStart = Math.max(0, startIndex - this.buffer);
+    const visibleEnd = Math.min(
+      this.totalItems,
+      startIndex + this.visibleCount + this.buffer
+    );
+    
+    // Clear current items
+    this.visibleContainer.innerHTML = '';
+    
+    // Render visible items
+    for (let i = visibleStart; i < visibleEnd; i++) {
+      const item = this.renderItem(i);
+      item.style.position = 'absolute';
+      item.style.top = `${i * this.itemHeight}px`;
+      item.style.height = `${this.itemHeight}px`;
+      item.style.left = '0';
+      item.style.right = '0';
+      this.visibleContainer.appendChild(item);
+    }
+    
+    // Adjust container position
+    this.visibleContainer.style.transform = 
+      `translateY(${visibleStart * this.itemHeight}px)`;
+  }
+}
+
+// Usage
+const scroller = new VirtualScroller(
+  document.getElementById('list'),
+  {
+    itemHeight: 50,
+    totalItems: 10000,
+    renderItem: (index) => {
+      const div = document.createElement('div');
+      div.textContent = `Item ${index}`;
+      div.className = 'list-item';
+      return div;
+    }
+  }
+);
+```
+
+## React Implementation
+
+### Using react-window
+```javascript
+import { FixedSizeList as List } from 'react-window';
+
+function VirtualizedList({ items }) {
+  const Row = ({ index, style }) => (
+    <div style={style} className="list-item">
+      {items[index].name}
+    </div>
+  );
+  
+  return (
+    <List
+      height={500}
+      itemCount={items.length}
+      itemSize={50}
+      width="100%"
+    >
+      {Row}
+    </List>
+  );
+}
+```
+
+### Custom React Hook
+```javascript
+import { useState, useEffect, useRef, useCallback } from 'react';
+
+function useVirtualList(itemCount, itemHeight, overscan = 5) {
+  const containerRef = useRef(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  
+  const visibleRange = useCallback(() => {
+    const containerHeight = containerRef.current?.clientHeight || 0;
+    const start = Math.floor(scrollTop / itemHeight);
+    const visibleCount = Math.ceil(containerHeight / itemHeight);
+    
+    return {
+      start: Math.max(0, start - overscan),
+      end: Math.min(itemCount, start + visibleCount + overscan)
+    };
+  }, [scrollTop, itemHeight, itemCount, overscan]);
+  
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    
+    const handleScroll = () => {
+      setScrollTop(container.scrollTop);
+    };
+    
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
+  
+  const { start, end } = visibleRange();
+  const totalHeight = itemCount * itemHeight;
+  const offsetY = start * itemHeight;
+  
+  return {
+    containerRef,
+    virtualItems: { start, end },
+    totalHeight,
+    offsetY
+  };
+}
+
+// Usage
+function MyVirtualList({ items }) {
+  const { containerRef, virtualItems, totalHeight, offsetY } = 
+    useVirtualList(items.length, 50);
+  
+  const visibleItems = items.slice(virtualItems.start, virtualItems.end);
+  
+  return (
+    <div ref={containerRef} style={{ height: '500px', overflow: 'auto' }}>
+      <div style={{ height: totalHeight, position: 'relative' }}>
+        <div style={{ transform: `translateY(${offsetY}px)` }}>
+          {visibleItems.map((item, index) => (
+            <div key={item.id} style={{ height: 50 }}>
+              {item.name}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+## Advanced Features
+
+### Variable Height Items
+```javascript
+// Measure items dynamically
+function VariableHeightList({ items }) {
+  const [heights, setHeights] = useState({});
+  const itemRefs = useRef({});
+  
+  useEffect(() => {
+    // Measure actual heights after render
+    const newHeights = {};
+    Object.keys(itemRefs.current).forEach(key => {
+      const el = itemRefs.current[key];
+      if (el) {
+        newHeights[key] = el.getBoundingClientRect().height;
+      }
+    });
+    setHeights(newHeights);
+  }, [items]);
+  
+  // Calculate positions based on heights
+  const getItemOffset = (index) => {
+    let offset = 0;
+    for (let i = 0; i < index; i++) {
+      offset += heights[i] || estimatedHeight;
+    }
+    return offset;
+  };
+  
+  // ... render logic
+}
+```
+
+### Dynamic Loading
+```javascript
+function InfiniteVirtualList() {
+  const [items, setItems] = useState([]);
+  const [hasMore, setHasMore] = useState(true);
+  const loaderRef = useRef(null);
+  
+  const loadMore = useCallback(async () => {
+    if (!hasMore) return;
+    
+    const newItems = await fetchItems(items.length, 20);
+    setItems(prev => [...prev, ...newItems]);
+    setHasMore(newItems.length === 20);
+  }, [items.length, hasMore]);
+  
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries[0].isIntersecting) {
+          loadMore();
+        }
+      },
+      { threshold: 0 }
+    );
+    
+    if (loaderRef.current) {
+      observer.observe(loaderRef.current);
+    }
+    
+    return () => observer.disconnect();
+  }, [loadMore]);
+  
+  return (
+    <VirtualList items={items} />
+    {hasMore && <div ref={loaderRef}>Loading...</div>}
+  );
+}
+```
+
+## Performance Tips
+
+```javascript
+// 1. Use requestAnimationFrame for scroll handling
+container.addEventListener('scroll', () => {
+  requestAnimationFrame(() => renderVisibleItems());
+});
+
+// 2. Debounce resize handlers
+const debouncedResize = debounce(handleResize, 100);
+window.addEventListener('resize', debouncedResize);
+
+// 3. Use CSS containment
+.list-container {
+  contain: strict;
+}
+
+// 4. Recycle DOM elements instead of creating new ones
+class Recycler {
+  constructor(createFn) {
+    this.createFn = createFn;
+    this.pool = [];
+  }
+  
+  get() {
+    return this.pool.pop() || this.createFn();
+  }
+  
+  recycle(element) {
+    this.pool.push(element);
+  }
+}
+```
+
+<KeyTakeaway>
+Virtual scrolling enables rendering massive lists by only keeping visible items in the DOM. Use libraries like react-window for React, or implement custom solutions using absolute positioning and scroll tracking. Handle variable heights with dynamic measurement, and always include buffer zones for smooth scrolling.
+</KeyTakeaway>

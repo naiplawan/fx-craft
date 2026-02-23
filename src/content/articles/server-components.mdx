@@ -1,19 +1,302 @@
 ---
 title: "Server Components"
 slug: "server-components"
-subtitle: "Deep dive into server components"
+subtitle: "Render React components on the server"
 category: "rendering"
 icon: "server"
-description: "Understanding server components and its applications in modern web development"
+description: "React Server Components enable zero-bundle-size components that render exclusively on the server"
 difficulty: "advanced"
-tags: ["react","nextjs","ssr"]
-related: []
-resources: []
-status: "stub"
+tags: ["react","nextjs","ssr","server-components"]
+related: ["suspense","streaming-ssr","ssg"]
+resources:
+  - title: "React Server Components RFC"
+    url: "https://github.com/reactjs/rfcs/blob/main/text/0188-server-components.md"
+  - title: "Next.js Server Components"
+    url: "https://nextjs.org/docs/app/building-your-application/rendering/server-components"
+status: "published"
 ---
 
 <DefinitionBlock>
-Server Components is a concept in frontend engineering. This article is currently being written.
+React Server Components (RSC) allow developers to render components exclusively on the server. They can access backend resources directly, reduce client-side JavaScript bundle size to zero, and seamlessly integrate with client components for interactivity.
 </DefinitionBlock>
 
-<StubNotice />
+## How They Work
+
+### Server vs Client Components
+```javascript
+// Server Component (default in App Router)
+// - Render on server
+// - Can access database/filesystem
+// - Zero client JS
+async function BlogPost({ slug }) {
+  const post = await db.posts.findOne({ slug });
+  
+  return (
+    <article>
+      <h1>{post.title}</h1>
+      <Markdown content={post.content} />
+    </article>
+  );
+}
+
+// Client Component
+// - Render on client
+// - Can use hooks, browser APIs
+// - Interactivity
+'use client';
+
+import { useState } from 'react';
+
+function LikeButton({ postId }) {
+  const [liked, setLiked] = useState(false);
+  
+  return (
+    <button onClick={() => setLiked(!liked)}>
+      {liked ? '❤️' : '🤍'}
+    </button>
+  );
+}
+```
+
+## Benefits
+
+### Zero Bundle Size
+```javascript
+// Server Component
+import { format } from 'date-fns'; // 20kb library
+
+function DateDisplay({ date }) {
+  // This runs on server only
+  // Client doesn't download date-fns
+  return <time>{format(date, 'PPP')}</time>;
+}
+
+// Compare with Client Component
+'use client';
+
+import { format } from 'date-fns'; // Downloaded to client!
+
+function DateDisplay({ date }) {
+  return <time>{format(date, 'PPP')}</time>;
+}
+```
+
+### Direct Backend Access
+```javascript
+// Server Component can query DB directly
+import { db } from './db';
+
+async function UserProfile({ userId }) {
+  // No API endpoint needed!
+  const user = await db.users.findUnique({
+    where: { id: userId }
+  });
+  
+  return (
+    <div>
+      <h1>{user.name}</h1>
+      <p>{user.email}</p>
+    </div>
+  );
+}
+```
+
+### Automatic Code Splitting
+```javascript
+// Client components imported in Server Components
+// are automatically code-split
+
+import { HeavyChart } from './HeavyChart'; // Lazy loaded!
+
+async function AnalyticsPage() {
+  const data = await fetchAnalytics();
+  
+  return (
+    <div>
+      <Summary data={data} />
+      <HeavyChart data={data} /> {/* Loaded on demand */}
+    </div>
+  );
+}
+```
+
+## Patterns
+
+### Server Component Composition
+```javascript
+// Layout is Server Component
+export default function Layout({ children }) {
+  return (
+    <html>
+      <body>
+        <Header />
+        {children}
+        <Footer />
+      </body>
+    </html>
+  );
+}
+
+// Page is Server Component
+export default async function Page() {
+  const data = await fetchData();
+  
+  return (
+    <main>
+      <DataTable data={data} />
+      <InteractiveFilter /> {/* Client Component */}
+    </main>
+  );
+}
+```
+
+### Passing Server Data to Client
+```javascript
+async function ProductPage({ id }) {
+  const product = await getProduct(id);
+  
+  return (
+    <div>
+      <h1>{product.name}</h1>
+      <AddToCartButton 
+        productId={product.id} 
+        price={product.price}
+      />
+    </div>
+  );
+}
+
+'use client';
+
+function AddToCartButton({ productId, price }) {
+  const [count, setCount] = useState(1);
+  
+  return (
+    <button onClick={() => addToCart(productId, count)}>
+      Add {count} to cart (${price * count})
+    </button>
+  );
+}
+```
+
+### Streaming
+```javascript
+// Components can suspend and stream
+import { Suspense } from 'react';
+
+export default function Dashboard() {
+  return (
+    <div>
+      <Header />
+      
+      <Suspense fallback={<Skeleton />}>
+        <SlowWidget />
+      </Suspense>
+      
+      <Suspense fallback={<Skeleton />}>
+        <AnotherSlowWidget />
+      </Suspense>
+    </div>
+  );
+}
+
+async function SlowWidget() {
+  const data = await fetchSlowData();
+  return <Widget data={data} />;
+}
+```
+
+## Limitations
+
+### What Server Components Can't Do
+```javascript
+// ❌ Can't use hooks
+function ServerComp() {
+  const [state, setState] = useState(); // Error!
+}
+
+// ❌ Can't use browser APIs
+function ServerComp() {
+  localStorage.getItem('key'); // Error!
+}
+
+// ❌ Can't use event handlers
+function ServerComp() {
+  return <button onClick={handler}>Click</button>; // Error!
+}
+
+// ❌ Can't use Context
+function ServerComp() {
+  const value = useContext(MyContext); // Error!
+}
+```
+
+## Best Practices
+
+### Move Client Code Down
+```javascript
+// Bad: Whole page is client component
+'use client';
+
+function Page() {
+  const [filter, setFilter] = useState('');
+  
+  return (
+    <div>
+      <Header />
+      <input value={filter} onChange={...} />
+      <DataList filter={filter} />
+    </div>
+  );
+}
+
+// Good: Only interactive part is client
+async function Page() {
+  const data = await fetchData();
+  
+  return (
+    <div>
+      <Header />
+      <FilterableList data={data} />
+    </div>
+  );
+}
+
+'use client';
+
+function FilterableList({ data }) {
+  const [filter, setFilter] = useState('');
+  // Only this component in client bundle
+  return (...);
+}
+```
+
+### Data Fetching
+```javascript
+// Fetch close to where data is used
+async function Post({ id }) {
+  const post = await fetch(`https://api.example.com/posts/${id}`);
+  // Component suspends here
+  
+  return <article>{post.content}</article>;
+}
+
+// Parallel fetching
+async function Page() {
+  // Start both requests immediately
+  const userPromise = getUser();
+  const postsPromise = getPosts();
+  
+  // Wait for both
+  const [user, posts] = await Promise.all([
+    userPromise,
+    postsPromise
+  ]);
+  
+  return (...);
+}
+```
+
+<KeyTakeaway>
+Server Components render exclusively on the server, reducing bundle size and enabling direct backend access. They complement Client Components - use Server Components for data fetching and static content, Client Components for interactivity. This hybrid approach provides the best of both worlds: fast initial loads and rich user interactions.
+</KeyTakeaway>
