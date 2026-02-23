@@ -149,23 +149,27 @@ export default async function handler(req) {
 export const config = { runtime: 'edge' };
 
 export default async function handler(req) {
-  const { title, author } = req.query;
-  
-  // Generate SVG on edge
-  const svg = `
-    <svg width="1200" height="630">
-      <rect fill="#1a1a1a" width="1200" height="630"/>
-      <text fill="white" x="50" y="200" font-size="64">${title}</text>
-      <text fill="#888" x="50" y="500" font-size="32">By ${author}</text>
-    </svg>
-  `;
-  
+  const url = new URL(req.url);
+  const title = url.searchParams.get('title') || 'Default Title';
+  const author = url.searchParams.get('author') || 'Anonymous';
+
+  // Generate SVG on edge using string concatenation
+  const svg = '<svg width="1200" height="630">' +
+    '<rect fill="#1a1a1a" width="1200" height="630"/>' +
+    '<text fill="white" x="50" y="200" font-size="64">' + escapeXml(title) + '</text>' +
+    '<text fill="#888" x="50" y="500" font-size="32">By ' + escapeXml(author) + '</text>' +
+    '</svg>';
+
   return new Response(svg, {
     headers: {
       'Content-Type': 'image/svg+xml',
       'Cache-Control': 'public, max-age=86400'
     }
   });
+}
+
+function escapeXml(str) {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 ```
 
