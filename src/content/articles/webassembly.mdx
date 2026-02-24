@@ -27,56 +27,48 @@ WebAssembly (Wasm) is a binary instruction format that enables high-performance 
 WebAssembly has several defining characteristics: binary format (not text-based like JavaScript), stack-based virtual machine, linear memory model, portable across all modern browsers, and secure sandboxed execution environment.
 
 ### Performance Comparison
-```javascript
-// JavaScript: Interpreted/JIT compiled
-// WebAssembly: Pre-compiled, optimized binary
 
-// Typical speedups:
-// - 10-20x faster for compute-heavy algorithms
-// - 2-5x faster for general operations
-// - Near-native performance for SIMD operations
-```
+Typical speedups include 10x to 20x faster for compute-heavy algorithms, 2x to 5x for general operations, and near-native performance for SIMD operations.
 
 ## Basic Usage
 
 ### Loading a WebAssembly Module
+
 ```javascript
 // Fetch and instantiate WASM
 async function loadWasm() {
   const response = await fetch('./module.wasm');
   const bytes = await response.arrayBuffer();
-  
+
   // Instantiate with JavaScript imports
   const { instance } = await WebAssembly.instantiate(bytes, {
     env: {
       memory: new WebAssembly.Memory({ initial: 256 }),
       table: new WebAssembly.Table({ initial: 0, element: 'anyfunc' }),
-      // Import JavaScript functions
       consoleLog: (value) => console.log(value)
     }
   });
-  
+
   return instance.exports;
 }
 
 // Usage
 const wasm = await loadWasm();
-const result = wasm.add(5, 3); // Call exported function
-console.log(result); // 8
+const result = wasm.add(5, 3);
+console.log(result);
 ```
 
 ### Using wasm-bindgen (Rust)
+
 ```rust
 // Rust code (lib.rs)
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 pub fn fibonacci(n: u32) -> u32 {
-    match n {
-        0 => 0,
-        1 => 1,
-        _ => fibonacci(n - 1) + fibonacci(n - 2),
-    }
+    if n == 0 { return 0; }
+    if n == 1 { return 1; }
+    fibonacci(n.wrapping_sub(1)).wrapping_add(fibonacci(n.wrapping_sub(2)))
 }
 ```
 
@@ -84,12 +76,13 @@ pub fn fibonacci(n: u32) -> u32 {
 // JavaScript usage
 import { fibonacci } from './pkg';
 
-console.log(fibonacci(40)); // Much faster than JS version
+console.log(fibonacci(40));
 ```
 
 ## Use Cases
 
 ### 1. Image/Video Processing
+
 ```javascript
 // Real-time image filters
 const canvas = document.getElementById('canvas');
@@ -108,19 +101,21 @@ ctx.putImageData(processed, 0, 0);
 ```
 
 ### 2. Gaming
+
 ```javascript
-// Game engine in C++ compiled to WASM
+// Game engine compiled to WASM
 const game = await loadGame();
 
 // Main loop
 function gameLoop() {
-  wasm.update();     // Update game state
-  wasm.render();     // Render frame
+  wasm.update();
+  wasm.render();
   requestAnimationFrame(gameLoop);
 }
 ```
 
 ### 3. Cryptography
+
 ```javascript
 // Fast hashing
 async function hashFile(file) {
@@ -131,6 +126,7 @@ async function hashFile(file) {
 ```
 
 ### 4. Audio Processing
+
 ```javascript
 // Web Audio API + WebAssembly
 const audioContext = new AudioContext();
@@ -139,8 +135,6 @@ const processor = audioContext.createScriptProcessor(4096, 1, 1);
 processor.onaudioprocess = (e) => {
   const inputData = e.inputBuffer.getChannelData(0);
   const outputData = e.outputBuffer.getChannelData(0);
-  
-  // Process in WASM
   wasm.processAudio(inputData, outputData, inputData.length);
 };
 ```
@@ -148,6 +142,7 @@ processor.onaudioprocess = (e) => {
 ## Memory Management
 
 ### Shared Linear Memory
+
 ```javascript
 // Create memory that both JS and WASM can access
 const memory = new WebAssembly.Memory({
@@ -160,22 +155,22 @@ const memory = new WebAssembly.Memory({
 const array = new Uint8Array(memory.buffer);
 array[0] = 42;
 
-// Access from WASM
-// (void)memory[0]; // Gets 42
+// Access from WASM returns 42 at index 0
 ```
 
 ### Passing Strings
+
 ```javascript
 // Helper functions for string conversion
 function stringToPtr(str, wasm) {
   const encoder = new TextEncoder();
   const bytes = encoder.encode(str);
   const ptr = wasm.alloc(bytes.length + 1);
-  
+
   const memory = new Uint8Array(wasm.memory.buffer);
   memory.set(bytes, ptr);
   memory[ptr + bytes.length] = 0; // Null terminator
-  
+
   return ptr;
 }
 
@@ -183,7 +178,7 @@ function ptrToString(ptr, wasm) {
   const memory = new Uint8Array(wasm.memory.buffer);
   let end = ptr;
   while (memory[end] !== 0) end++;
-  
+
   const bytes = memory.slice(ptr, end);
   return new TextDecoder().decode(bytes);
 }
@@ -192,14 +187,14 @@ function ptrToString(ptr, wasm) {
 ## SIMD (Single Instruction, Multiple Data)
 
 ### Vector Operations
+
 ```javascript
-// 128-bit SIMD operations
-// Process 4 floats or 16 bytes at once
+// 128-bit SIMD operations process 4 floats or 16 bytes at once
 
 // Image processing example
 function processPixelsSimd(data) {
   const result = wasm.processSimd(data);
-  // ~4x faster than scalar operations
+  // Approximately 4x faster than scalar operations
   return result;
 }
 ```
@@ -207,42 +202,39 @@ function processPixelsSimd(data) {
 ## Debugging
 
 ### Source Maps
-```javascript
-// Compile with debug info
-// emcc -g4 source.c -o output.js
 
-// In DevTools:
-// - See original C/C++ code
-// - Set breakpoints
-// - Inspect variables
-```
+Compile with debug info using `emcc -g4 source.c -o output.js`
+
+In DevTools you can see original C/C++ code, set breakpoints, and inspect variables.
 
 ### Error Handling
+
 ```javascript
 try {
   const result = wasm.riskyOperation();
 } catch (e) {
   if (e instanceof WebAssembly.RuntimeError) {
     console.error('WASM Runtime Error:', e.message);
-    // Stack overflow, out of bounds access, etc.
   }
 }
 ```
 
 ## Best Practices
 
-### 1. Optimize JavaScript <-> WASM Calls
+### 1. Optimize JavaScript/WASM Calls
+
 ```javascript
-// ❌ Bad: Many small calls
+// Avoid: Many small calls
 for (let i = 0; i < 1000; i++) {
   wasm.processOne(data[i]);
 }
 
-// ✅ Good: Batch operations
+// Prefer: Batch operations
 wasm.processMany(data, data.length);
 ```
 
 ### 2. Avoid Frequent Memory Resizing
+
 ```javascript
 // Pre-allocate sufficient memory
 const memory = new WebAssembly.Memory({
@@ -252,6 +244,7 @@ const memory = new WebAssembly.Memory({
 ```
 
 ### 3. Use Workers for Heavy Computation
+
 ```javascript
 // main.js
 const worker = new Worker('wasm-worker.js');
@@ -276,34 +269,32 @@ self.onmessage = async (e) => {
 ## Tools and Frameworks
 
 ### Emscripten
-```bash
-# Compile C/C++ to WASM
-emcc main.cpp -o index.html \
-  -s WASM=1 \
-  -s EXPORTED_FUNCTIONS='["_main", "_calculate"]' \
-  -s EXTRA_EXPORTED_RUNTIME_METHODS='["ccall", "cwrap"]'
+
+Compile C/C++ to WASM:
+
+```shell
+emcc main.cpp -o index.html -s WASM=1 -s EXPORTED_FUNCTIONS='["_main","_calculate"]'
 ```
 
 ### AssemblyScript
+
 ```typescript
 // TypeScript-like syntax
 export function add(a: i32, b: i32): i32 {
   return a + b;
 }
-
 // Compiles to WebAssembly
 ```
 
 ### Rust + wasm-pack
-```bash
-# Build Rust for web
-wasm-pack build --target web
 
-# Generates:
-# - pkg/package.json
-# - pkg/module_bg.wasm
-# - pkg/module.js (bindings)
+Build Rust for web:
+
+```shell
+wasm-pack build --target web
 ```
+
+Generates: pkg/package.json, pkg/module_bg.wasm, pkg/module.js (bindings)
 
 <KeyTakeaway>
 WebAssembly enables near-native performance in browsers for compute-intensive tasks. Use it for image processing, games, cryptography, and audio/video manipulation. Minimize JS-WASM boundary crossings, manage memory carefully, and consider Web Workers for heavy computations. Modern tools like wasm-pack and Emscripten make integration straightforward.

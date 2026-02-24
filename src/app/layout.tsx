@@ -17,6 +17,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteMetadata.url),
   title: {
     default: siteMetadata.title,
     template: `%s | ${siteMetadata.title}`,
