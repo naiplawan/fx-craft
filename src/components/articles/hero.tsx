@@ -1,39 +1,78 @@
 import Link from "next/link";
-import { ArrowRight, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles, BookOpen, Users, Award, Brain } from "lucide-react";
 
 export function Hero() {
   return (
     <section className="relative py-20 lg:py-32 overflow-hidden">
+      {/* Background gradient with animation */}
       <div className="absolute inset-0 bg-gradient-to-br from-[#EBF4F6] via-white to-white dark:from-[#09637E]/10 dark:via-gray-950 dark:to-gray-950" />
-      
+      <div className="absolute inset-0 opacity-30">
+        <div className="absolute top-0 left-0 w-96 h-96 bg-[#088395]/20 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-0 right-0 w-96 h-96 bg-[#7AB2B2]/20 rounded-full blur-3xl animate-pulse animation-delay-2000" />
+      </div>
+
       <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative">
-        <div className="max-w-3xl mx-auto text-center">
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#088395]/10 dark:bg-[#7AB2B2]/10 text-[#088395] dark:text-[#7AB2B2] text-sm font-medium mb-8">
+        <div className="max-w-4xl mx-auto text-center">
+          {/* Enhanced badge with animation */}
+          <div className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#088395]/10 dark:bg-[#7AB2B2]/10 text-[#088395] dark:text-[#7AB2B2] text-sm font-medium mb-8 animate-pulse">
             <Sparkles className="w-4 h-4" />
             Advanced Frontend Engineering
           </div>
-          
-          <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 dark:text-gray-100 mb-6">
-            Master the craft of
-            <span className="text-[#088395] dark:text-[#7AB2B2]"> frontend engineering</span>
-          </h1>
-          
-          <p className="text-lg md:text-xl text-gray-600 dark:text-gray-400 mb-10 max-w-2xl mx-auto">
-            A curated knowledge base of 80+ deep technical concepts every senior developer should know. 
+
+          {/* Split headline for more visual impact */}
+          <div className="mb-8">
+            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold text-gray-900 dark:text-gray-100 mb-4">
+              Master the craft of
+            </h1>
+            <h1 className="text-5xl md:text-6xl lg:text-7xl font-bold bg-gradient-to-r from-[#088395] to-[#7AB2B2] bg-clip-text text-transparent mb-6">
+              frontend engineering
+            </h1>
+          </div>
+
+          {/* Enhanced description */}
+          <p className="text-xl md:text-2xl text-gray-600 dark:text-gray-400 mb-12 max-w-3xl mx-auto">
+            A curated knowledge base of 80+ deep technical concepts every senior developer should know.
             From hydration to fiber architecture, from CORS to CRDTs.
           </p>
-          
+
+          {/* Stats section for credibility */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12 max-w-2xl mx-auto">
+            <div className="text-center">
+              <div className="flex items-center justify-center w-12 h-12 mx-auto mb-2 rounded-full bg-[#088395]/10 dark:bg-[#7AB2B2]/10">
+                <BookOpen className="w-6 h-6 text-[#088395] dark:text-[#7AB2B2]" />
+              </div>
+              <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">80+</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400">Articles</div>
+            </div>
+            <div className="text-center">
+              <div className="flex items-center justify-center w-12 h-12 mx-auto mb-2 rounded-full bg-[#088395]/10 dark:bg-[#7AB2B2]/10">
+                <Users className="w-6 h-6 text-[#088395] dark:text-[#7AB2B2]" />
+              </div>
+              <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">10k+</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400">Developers</div>
+            </div>
+            <div className="text-center">
+              <div className="flex items-center justify-center w-12 h-12 mx-auto mb-2 rounded-full bg-[#088395]/10 dark:bg-[#7AB2B2]/10">
+                <Award className="w-6 h-6 text-[#088395] dark:text-[#7AB2B2]" />
+              </div>
+              <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">Expert</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400">Level</div>
+            </div>
+          </div>
+
+          {/* Enhanced CTA buttons */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Link
               href="/articles"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg bg-[#088395] dark:bg-[#7AB2B2] text-white dark:text-gray-950 font-medium hover:bg-[#09637E] dark:hover:bg-[#88c4c4] transition-colors"
+              className="group inline-flex items-center gap-3 px-8 py-4 rounded-lg bg-[#088395] dark:bg-[#7AB2B2] text-white dark:text-gray-950 font-semibold hover:bg-[#09637E] dark:hover:bg-[#88c4c4] transition-all duration-200 transform hover:scale-105 shadow-lg hover:shadow-xl"
             >
+              <Brain className="w-5 h-5" />
               Explore Articles
-              <ArrowRight className="w-4 h-4" />
+              <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
             </Link>
             <Link
               href="/principles"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-medium hover:bg-gray-50 dark:hover:bg-gray-900 transition-colors"
+              className="inline-flex items-center gap-2 px-8 py-4 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 font-semibold hover:bg-gray-50 dark:hover:bg-gray-900 transition-all duration-200"
             >
               Our Principles
             </Link>
