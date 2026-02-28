@@ -1,0 +1,30 @@
+---
+import ArticleCard from './ArticleCard.astro';
+
+interface Article {
+  title: string;
+  slug: string;
+  subtitle: string;
+  category: string;
+  icon: string;
+  description: string;
+  difficulty: string;
+  tags: string[];
+  related: string[];
+  resources: Array<{ title: string; url: string }>;
+  status: string;
+  content: any;
+}
+
+interface Props {
+  articles: Article[];
+}
+
+const { articles } = Astro.props;
+---
+
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+  {articles.map((article) => (
+    <ArticleCard article={article} />
+  ))}
+</div>

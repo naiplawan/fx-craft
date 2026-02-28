@@ -1,0 +1,16 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { getCollection } from 'astro:content';
+import ArticlesPageContents from '@/components/articles/ArticlesPageContents.astro';
+
+const allArticles = await getCollection('articles');
+const articles = allArticles.map((entry) => ({
+  ...entry.data,
+  content: entry.render(),
+  slug: entry.slug,
+}));
+---
+
+<Layout title="Articles | SalakCode">
+  <ArticlesPageContents articles={articles} />
+</Layout>

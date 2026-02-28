@@ -1,0 +1,52 @@
+---
+import Layout from '@/layouts/Layout.astro';
+import { getCollection } from 'astro:content';
+import ArticleHeader from '@/components/article-detail/ArticleHeader.astro';
+import ResourceLinks from '@/components/article-detail/ResourceLinks.astro';
+import RelatedTopics from '@/components/article-detail/RelatedTopics.astro';
+import StubNotice from '@/components/article-detail/StubNotice.astro';
+import { DefinitionBlock, KeyTakeaway } from '@/components/article-detail/mdx-components';
+
+export async function getStaticPaths() {
+  const articles = await getCollection('articles');
+  return articles.map((entry) => {
+    // Generate slug from entry.id (removes .mdx extension)
+    const slug = entry.id.replace(/\.mdx$/, '');
+    return {
+      params: { slug },
+      props: { entry },
+    };
+  });
+}
+
+const { entry } = Astro.props;
+const { Content, headings } = await entry.render();
+
+const { title, description, status, resources, related } = entry.data;
+---
+
+<Layout title={title}>
+  <article class="mx-auto px-4 sm:px-6 lg:px-8 py-12 max-w-3xl">
+    <ArticleHeader
+      title={entry.data.title}
+      subtitle={entry.data.subtitle}
+      category={entry.data.category}
+      icon={entry.data.icon}
+      difficulty={entry.data.difficulty}
+      tags={entry.data.tags}
+      status={entry.data.status}
+    />
+
+    <div class="prose-content">
+      {status === 'stub' ? (
+        <StubNotice />
+      ) : (
+        <>
+          <Content components={{ DefinitionBlock, KeyTakeaway }} />
+          <ResourceLinks resources={resources} />
+          <RelatedTopics slugs={related} />
+        </>
+      )}
+    </div>
+  </article>
+</Layout>

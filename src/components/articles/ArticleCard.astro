@@ -1,0 +1,124 @@
+---
+import Badge from '@/components/ui/Badge.astro';
+import { Clock, BookMarked, TrendingUp } from 'lucide-react';
+
+interface Article {
+  title: string;
+  slug: string;
+  subtitle: string;
+  category: string;
+  icon: string;
+  description: string;
+  difficulty: string;
+  tags: string[];
+  related: string[];
+  resources: Array<{ title: string; url: string }>;
+  status: string;
+  content: any;
+}
+
+interface Props {
+  article: Article;
+}
+
+const { article } = Astro.props;
+
+// Calculate reading time
+const readingTime = Math.ceil((article.content?.length || 500) / 500);
+
+// Icon component mapping - simplified version
+const iconMap: Record<string, string> = {
+  FileText: 'file-text',
+  Code: 'code',
+  Cpu: 'cpu',
+  Zap: 'zap',
+  Database: 'database',
+  Globe: 'globe',
+  Shield: 'shield',
+  Layers: 'layers',
+  Package: 'package',
+  Eye: 'eye',
+};
+
+const iconName = iconMap[article.icon] || 'file-text';
+---
+
+<a
+  href={`/articles/${article.slug}`}
+  class="group block relative overflow-hidden p-6 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-[#088395] dark:hover:border-[#7AB2B2] hover:shadow-xl hover:shadow-[#088395]/20 dark:hover:shadow-[#7AB2B2]/20 shadow-sm dark:shadow-none transition-all duration-300 transform hover:-translate-y-1 before:absolute before:inset-0 before:bg-gradient-to-r before:from-[#088395]/0 before:to-[#088395]/5 before:opacity-0 before:group-hover:before:opacity-100 before:transition-opacity before:duration-300"
+>
+  <!-- Sticker for advanced content -->
+  {article.difficulty === 'advanced' && (
+    <div class="absolute top-4 right-4 flex items-center gap-1 px-2 py-1 rounded-full bg-red-500 text-white text-xs font-medium">
+      <TrendingUp className="w-3 h-3" />
+      Advanced
+    </div>
+  )}
+
+  <div class="relative">
+    <div class="flex items-start gap-4 mb-4">
+      <div class="flex-shrink-0 p-3 rounded-lg bg-gradient-to-br from-[#EBF4F6] to-[#f0f9fa] dark:from-[#09637E]/20 dark:to-[#09637E]/40 backdrop-blur-sm">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-[#088395] dark:text-[#7AB2B2]">
+          <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
+          <polyline points="14 2 14 8 20 8" />
+        </svg>
+      </div>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-center gap-2 mb-3 flex-wrap">
+          <Badge category={article.category} />
+          {article.status === 'stub' && (
+            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-yellow-100 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 text-xs font-medium">
+              <span class="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse" />
+              Coming soon
+            </span>
+          )}
+          {article.difficulty !== 'beginner' && (
+            <span class="text-xs font-medium text-gray-500 dark:text-gray-400">
+              {article.difficulty} level
+            </span>
+          )}
+        </div>
+        <h3 class="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2 group-hover:text-[#088395] dark:group-hover:text-[#7AB2B2] transition-colors">
+          {article.title}
+        </h3>
+        <p class="text-gray-600 dark:text-gray-300 mb-4 line-clamp-3">
+          {article.description}
+        </p>
+
+        <!-- Tags -->
+        {article.tags && article.tags.length > 0 && (
+          <div class="flex flex-wrap gap-1 mb-4">
+            {article.tags.slice(0, 3).map((tag) => (
+              <span class="inline-flex items-center px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400">
+                {tag}
+              </span>
+            ))}
+            {article.tags.length > 3 && (
+              <span class="text-xs text-gray-500 dark:text-gray-400">
+                +{article.tags.length - 3} more
+              </span>
+            )}
+          </div>
+        )}
+
+        <!-- Reading time -->
+        <div class="flex items-center text-sm text-gray-500 dark:text-gray-400">
+          <Clock className="w-4 h-4 mr-1" />
+          {readingTime} min read
+        </div>
+      </div>
+    </div>
+
+    <!-- Hover overlay -->
+    <div class="absolute inset-0 bg-[#088395]/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+  </div>
+</a>
+
+<style>
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+</style>

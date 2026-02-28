@@ -1,0 +1,98 @@
+---
+import { ViewTransitions } from 'astro:transitions';
+import Header from '@/components/layout/Header.astro';
+import Footer from '@/components/layout/Footer.astro';
+import '@/styles/globals.css';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const { title = 'SalakCode', description = 'Advanced frontend engineering knowledge base - curated technical concepts for senior developers' } = Astro.props;
+
+const canonicalURL = new URL(Astro.url.pathname, Astro.site);
+---
+
+<!doctype html>
+<html lang="en" class:dark={false}>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <meta name="generator" content={Astro.generator} />
+
+    <!-- Canonical URL -->
+    <link rel="canonical" href={canonicalURL} />
+
+    <!-- Primary Meta Tags -->
+    <title>{title}</title>
+    <meta name="title" content={title} />
+    <meta name="description" content={description} />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content={canonicalURL} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content="/og-image.png" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content={canonicalURL} />
+    <meta property="twitter:title" content={title} />
+    <meta property="twitter:description" content={description} />
+    <meta property="twitter:image" content="/og-image.png" />
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+    <ViewTransitions />
+  </head>
+  <body class="antialiased min-h-screen flex flex-col font-sans">
+    <Header />
+    <main class="flex-1">
+      <slot />
+    </main>
+    <Footer />
+    <script is:inline>
+      // Theme initialization
+      const theme = (() => {
+        if (typeof localStorage !== 'undefined' && localStorage.getItem('theme')) {
+          return localStorage.getItem('theme');
+        }
+        if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          return 'dark';
+        }
+        return 'light';
+      })();
+
+      if (theme === 'light') {
+        document.documentElement.classList.remove('dark');
+      } else if (theme === 'dark') {
+        document.documentElement.classList.add('dark');
+      }
+
+      window.localStorage.setItem('theme', theme);
+
+      // Listen for theme changes
+      window.addEventListener('storage', () => {
+        const updatedTheme = localStorage.getItem('theme');
+        if (updatedTheme === 'light') {
+          document.documentElement.classList.remove('dark');
+        } else if (updatedTheme === 'dark') {
+          document.documentElement.classList.add('dark');
+        }
+      });
+    </script>
+  </body>
+</html>
+
+<style is:global>
+  :root {
+    --font-sans: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+</style>

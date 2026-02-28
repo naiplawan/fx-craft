@@ -1,0 +1,33 @@
+---
+const currentYear = new Date().getFullYear();
+---
+
+<footer class="w-full border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
+  <div class="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+      <p class="text-sm text-gray-600 dark:text-gray-400">
+        © {currentYear} SalakCode. Advanced frontend engineering knowledge.
+      </p>
+      <nav class="flex items-center gap-6">
+        <a
+          href="/principles"
+          class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+        >
+          Principles
+        </a>
+        <a
+          href="/info"
+          class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+        >
+          About
+        </a>
+        <a
+          href="/articles"
+          class="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 transition-colors"
+        >
+          Articles
+        </a>
+      </nav>
+    </div>
+  </div>
+</footer>
